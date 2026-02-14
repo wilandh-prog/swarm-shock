@@ -35,7 +35,7 @@ func _draw() -> void:
 	_draw_pitch_ladder(ss)
 	_draw_flight_path_marker(ss)
 	_draw_center_reticle(ss)
-	_draw_lock_indicator(ss)
+	_draw_lock_reticle(ss)
 	_draw_missile_warning(ss)
 	_draw_g_meter(ss)
 
@@ -253,27 +253,51 @@ func _draw_center_reticle(ss: Vector2) -> void:
 	draw_line(Vector2(cx, cy - s), Vector2(cx, cy - g), HUD_GREEN, 1.5)
 	draw_line(Vector2(cx, cy + g), Vector2(cx, cy + s), HUD_GREEN, 1.5)
 
-# --- Lock indicator ---
+# --- Lock reticle (progressive circle) ---
 
-func _draw_lock_indicator(ss: Vector2) -> void:
+func _draw_lock_reticle(ss: Vector2) -> void:
 	if not player.weapon_manager:
 		return
-	var target: Node3D = player.weapon_manager.locked_target
-	if not target or not is_instance_valid(target):
+	var wm = player.weapon_manager
+	if not is_instance_valid(wm.tracking_target):
+		return
+	var tgt: Node3D = wm.tracking_target
+
+	var cam := get_viewport().get_camera_3d()
+	if not cam or cam.is_position_behind(tgt.global_position):
 		return
 
-	var dist: float = player.global_position.distance_to(target.global_position)
-	var cx: float = ss.x * 0.5
-	var y: float = ss.y * 0.5 + 55.0
+	var pos: Vector2 = cam.unproject_position(tgt.global_position)
+	var progress: float = wm.lock_progress
+	var is_locked: bool = wm.locked_target != null and is_instance_valid(wm.locked_target)
+
+	# Circle shrinks from 80px to 18px
+	var radius: float = lerpf(80.0, 18.0, progress)
+
+	var color: Color = HUD_GREEN
+	if is_locked:
+		var flash: float = fmod(Time.get_ticks_msec() * 0.001, 0.3)
+		color = HUD_GREEN if flash < 0.2 else Color(0.0, 1.0, 0.255, 0.5)
+
+	# Main circle
+	draw_arc(pos, radius, 0, TAU, 48, color, 2.0)
+
+	# 4 tick marks pointing inward
+	var tick: float = 12.0
+	draw_line(pos + Vector2(0, -radius - tick), pos + Vector2(0, -radius), color, 1.5)
+	draw_line(pos + Vector2(0, radius), pos + Vector2(0, radius + tick), color, 1.5)
+	draw_line(pos + Vector2(-radius - tick, 0), pos + Vector2(-radius, 0), color, 1.5)
+	draw_line(pos + Vector2(radius, 0), pos + Vector2(radius + tick, 0), color, 1.5)
+
 	var font := ThemeDB.fallback_font
 	if not font:
 		return
 
-	# Flashing LOCK text
-	var t: float = fmod(Time.get_ticks_msec() * 0.001, 0.5)
-	if t < 0.35:
-		draw_string(font, Vector2(cx - 25, y), "LOCK", HORIZONTAL_ALIGNMENT_CENTER, 50, 15, HUD_GREEN)
-	draw_string(font, Vector2(cx - 25, y + 16), "%dM" % int(dist), HORIZONTAL_ALIGNMENT_CENTER, 50, 13, HUD_GREEN)
+	var dist: float = player.global_position.distance_to(tgt.global_position)
+	draw_string(font, Vector2(pos.x - 30, pos.y + radius + 30), "%dM" % int(dist), HORIZONTAL_ALIGNMENT_CENTER, 60, 13, color)
+
+	if is_locked:
+		draw_string(font, Vector2(pos.x - 25, pos.y + radius + 16), "LOCK", HORIZONTAL_ALIGNMENT_CENTER, 50, 16, color)
 
 # --- Incoming missile warning ---
 
