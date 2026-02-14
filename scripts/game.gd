@@ -55,7 +55,7 @@ func _ready() -> void:
 	# Spawn player
 	player = player_scene.instantiate()
 	add_child(player)
-	player.global_position = Vector3.ZERO
+	player.global_position = Vector3(0, 2000, 0)
 	player.died.connect(_on_player_died)
 
 	# Camera (orthographic, top-down)
@@ -65,7 +65,7 @@ func _ready() -> void:
 	camera.position = Vector3(0, 250, 350)
 	camera.rotation_degrees = Vector3(-30, 0, 0)
 	camera.near = 1.0
-	camera.far = 10000.0
+	camera.far = 50000.0
 	player.add_child(camera)
 	camera.make_current()
 
@@ -103,7 +103,7 @@ func _ready() -> void:
 func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(8000, 8000)
+	plane.size = Vector2(200000, 200000)
 	plane.subdivide_width = 256
 	plane.subdivide_depth = 256
 	_ground.mesh = plane
@@ -169,7 +169,7 @@ func _spawn_enemies() -> void:
 	for i in _spawn_count:
 		var angle := randf() * TAU
 		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
-		var spawn_pos := player.global_position + Vector3(cos(angle), 0, sin(angle)) * dist
+		var spawn_pos := player.global_position + Vector3(cos(angle), randf_range(-50, 50), sin(angle)) * dist
 
 		var enemy: Area3D = enemy_scene.instantiate()
 		enemy.target = player

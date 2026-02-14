@@ -36,8 +36,8 @@ const MIN_SPEED_MULT: float = 0.5
 const MAX_SPEED_MULT: float = 2.0
 const ALTITUDE_SPEED: float = 150.0
 const MIN_ALTITUDE: float = 0.0
-const MAX_ALTITUDE: float = 80.0
-var _target_altitude: float = 0.0
+const MAX_ALTITUDE: float = 4000.0
+var _target_altitude: float = 2000.0
 
 # Banking
 var _bank_angle: float = 0.0
