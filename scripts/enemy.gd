@@ -29,6 +29,7 @@ var _hit_scale: float = 1.0
 enum AIState { APPROACH, FIRE, BREAK_AWAY }
 var _ai_state: AIState = AIState.APPROACH
 var _fire_cooldown: float = 0.0
+var _missiles_remaining: int = 4
 var _break_timer: float = 0.0
 var _break_direction: float = 1.0  # +1 or -1 for left/right break
 const FIRE_RANGE: float = 1200.0
@@ -336,7 +337,7 @@ func _process(delta: float) -> void:
 					_turn_speed = move_toward(_turn_speed, 0.0, TURN_ACCEL * delta)
 
 				# Check if in firing position
-				if dist_to_target < FIRE_RANGE and _fire_cooldown <= 0.0:
+				if dist_to_target < FIRE_RANGE and _fire_cooldown <= 0.0 and _missiles_remaining > 0:
 					var dot: float = fwd.dot(to_target.normalized())
 					if dot > FIRE_CONE:
 						_ai_state = AIState.FIRE
@@ -344,6 +345,7 @@ func _process(delta: float) -> void:
 			AIState.FIRE:
 				# Fire missile at player and immediately break
 				_fire_missile_at_target()
+				_missiles_remaining -= 1
 				_fire_cooldown = FIRE_RATE
 				_ai_state = AIState.BREAK_AWAY
 				_break_timer = BREAK_DURATION

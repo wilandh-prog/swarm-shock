@@ -13,6 +13,7 @@ var _mesh_root: Node3D
 var homing_target: Node3D = null
 var homing_turn_rate: float = 4.0
 var is_enemy_missile: bool = false
+var is_bullet: bool = false
 
 func _ready() -> void:
 	add_to_group("projectile")
@@ -35,6 +36,10 @@ func setup(dir: Vector3, dmg: float, spd: float = 3000.0, _prc: int = 1, _col: C
 
 func _build_mesh() -> void:
 	_mesh_root = Node3D.new()
+
+	if is_bullet:
+		_build_bullet_mesh()
+		return
 
 	# Missile body — red for enemy, white for player
 	var body_color: Color = Color(0.9, 0.2, 0.15) if is_enemy_missile else Color(0.85, 0.88, 0.9)
@@ -112,6 +117,28 @@ func _build_mesh() -> void:
 	_update_mesh_orientation()
 	add_child(_mesh_root)
 
+func _build_bullet_mesh() -> void:
+	# Yellow tracer round
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.9, 0.3)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.8, 0.2)
+	mat.emission_energy_multiplier = 4.0
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+
+	var body := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 1.0
+	mesh.bottom_radius = 1.0
+	mesh.height = 12.0
+	mesh.radial_segments = 6
+	mesh.material = mat
+	body.mesh = mesh
+	_mesh_root.add_child(body)
+
+	_update_mesh_orientation()
+	add_child(_mesh_root)
+
 func _update_mesh_orientation() -> void:
 	if not _mesh_root:
 		return
@@ -133,6 +160,10 @@ func _process(delta: float) -> void:
 			# Smoothly rotate direction toward target (full 3D)
 			direction = direction.slerp(desired, homing_turn_rate * delta).normalized()
 			_update_mesh_orientation()
+
+	# Flare attraction for enemy missiles
+	if is_enemy_missile:
+		_check_flare_attract()
 
 	global_position += direction * speed * delta
 	_timer += delta
@@ -158,6 +189,20 @@ func _process(delta: float) -> void:
 			homing_target.take_damage(damage)
 			_explode()
 
+func _check_flare_attract() -> void:
+	var flares := get_tree().get_nodes_in_group("flare")
+	for flare in flares:
+		if not is_instance_valid(flare):
+			continue
+		var dist: float = global_position.distance_to(flare.global_position)
+		if dist > 800.0:
+			continue
+		# Closer flare = higher chance per frame
+		var chance: float = 0.04 * (1.0 - dist / 800.0)
+		if randf() < chance:
+			homing_target = flare
+			return
+
 func get_damage() -> float:
 	return damage
 
@@ -165,6 +210,13 @@ func on_hit() -> void:
 	_explode()
 
 func _explode() -> void:
+	# Bullets just disappear with a small spark
+	if is_bullet:
+		var spark := Particles.chain_spark(global_position)
+		get_tree().current_scene.add_child(spark)
+		queue_free()
+		return
+
 	# AOE damage (player missiles only)
 	if not is_enemy_missile:
 		var enemies := get_tree().get_nodes_in_group("enemy")

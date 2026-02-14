@@ -44,6 +44,11 @@ var _bank_angle: float = 0.0
 const MAX_BANK_ANGLE: float = 0.5 # radians (~28 degrees)
 const BANK_LERP_SPEED: float = 6.0
 
+# Flares
+var _flare_cooldown: float = 0.0
+const FLARE_COOLDOWN: float = 0.3
+var _alt_was_pressed: bool = false
+
 # Visual
 var _body_color: Color = Color(0.2, 0.7, 1.0)
 var _core_color: Color = Color(0.6, 0.9, 1.0)
@@ -214,6 +219,15 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+	# Flare deployment (Alt key)
+	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
+	var alt_pressed: bool = Input.is_key_pressed(KEY_ALT)
+	if alt_pressed and not _alt_was_pressed and _flare_cooldown <= 0.0:
+		if not get_tree().get_nodes_in_group("enemy_projectile").is_empty():
+			_deploy_flare()
+			_flare_cooldown = FLARE_COOLDOWN
+	_alt_was_pressed = alt_pressed
+
 	# Invincibility
 	if _invincible:
 		_invincible_timer -= delta
@@ -289,6 +303,16 @@ func _on_pickup_entered(area: Area3D) -> void:
 func _on_enemy_contact(area: Area3D) -> void:
 	if area.is_in_group("enemy") and area.has_method("get_contact_damage"):
 		take_damage(area.get_contact_damage())
+
+func _deploy_flare() -> void:
+	var flare_script := load("res://scripts/flare.gd")
+	var flare := Area3D.new()
+	flare.set_script(flare_script)
+	var backward := -facing_direction * 300.0
+	backward.y = -50.0
+	flare.setup(backward)
+	get_tree().current_scene.call_deferred("add_child", flare)
+	flare.set_deferred("global_position", global_position)
 
 func get_nearest_enemy() -> Node3D:
 	var enemies := get_tree().get_nodes_in_group("enemy")

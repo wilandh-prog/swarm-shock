@@ -38,6 +38,8 @@ func _draw() -> void:
 	_draw_lock_reticle(ss)
 	_draw_missile_warning(ss)
 	_draw_g_meter(ss)
+	_draw_flare_status(ss)
+	_draw_radar(ss)
 
 # --- Heading tape (top center) ---
 
@@ -362,6 +364,89 @@ func _draw_g_meter(ss: Vector2) -> void:
 	if _smooth_g > 7.0:
 		g_color = Color(1.0, 0.3, 0.2, 0.9)
 	draw_string(font, Vector2(x + 15, y), "%.1f" % _smooth_g, HORIZONTAL_ALIGNMENT_LEFT, 40, 15, g_color)
+
+# --- Flare status ---
+
+func _draw_flare_status(ss: Vector2) -> void:
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var x: float = 75.0
+	var y: float = ss.y * 0.5 + 185.0
+	if player._flare_cooldown <= 0.0:
+		draw_string(font, Vector2(x, y), "FLARE RDY", HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN)
+	else:
+		draw_string(font, Vector2(x, y), "FLARE %.1f" % player._flare_cooldown, HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN_DIM)
+
+# --- Radar (bottom-left) ---
+
+const RADAR_RADIUS: float = 70.0
+const RADAR_RANGE: float = 3000.0
+
+func _draw_radar(ss: Vector2) -> void:
+	var cx: float = 90.0
+	var cy: float = ss.y - 90.0
+
+	# Background circle
+	draw_circle(Vector2(cx, cy), RADAR_RADIUS + 2, Color(0.0, 0.04, 0.0, 0.5))
+	draw_arc(Vector2(cx, cy), RADAR_RADIUS, 0, TAU, 48, HUD_GREEN, 1.5)
+
+	# Range rings
+	draw_arc(Vector2(cx, cy), RADAR_RADIUS * 0.5, 0, TAU, 32, HUD_GREEN_DIM, 0.5)
+
+	# Cross lines
+	draw_line(Vector2(cx - RADAR_RADIUS, cy), Vector2(cx + RADAR_RADIUS, cy), HUD_GREEN_DIM, 0.5)
+	draw_line(Vector2(cx, cy - RADAR_RADIUS), Vector2(cx, cy + RADAR_RADIUS), HUD_GREEN_DIM, 0.5)
+
+	# Player heading line
+	var hdg: float = player._heading
+	var fwd_x: float = sin(hdg) * RADAR_RADIUS * 0.3
+	var fwd_y: float = -cos(hdg) * RADAR_RADIUS * 0.3
+	draw_line(Vector2(cx, cy), Vector2(cx + fwd_x, cy + fwd_y), HUD_GREEN, 1.5)
+
+	# Player dot
+	draw_circle(Vector2(cx, cy), 3.0, HUD_GREEN)
+
+	# Enemy blips
+	var enemies := get_tree().get_nodes_in_group("enemy")
+	for enemy in enemies:
+		if not is_instance_valid(enemy):
+			continue
+		var rel: Vector3 = enemy.global_position - player.global_position
+		var dist: float = Vector2(rel.x, rel.z).length()
+		if dist > RADAR_RANGE:
+			continue
+		var radar_x: float = rel.x / RADAR_RANGE * RADAR_RADIUS
+		var radar_y: float = rel.z / RADAR_RANGE * RADAR_RADIUS
+		# Clamp to radar circle
+		var blip := Vector2(cx + radar_x, cy + radar_y)
+		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
+			continue
+		draw_rect(Rect2(blip.x - 2, blip.y - 2, 4, 4), WARN_RED)
+
+	# Incoming missiles
+	var missiles := get_tree().get_nodes_in_group("enemy_projectile")
+	for m in missiles:
+		if not is_instance_valid(m):
+			continue
+		var rel: Vector3 = m.global_position - player.global_position
+		var radar_x: float = rel.x / RADAR_RANGE * RADAR_RADIUS
+		var radar_y: float = rel.z / RADAR_RANGE * RADAR_RADIUS
+		var blip := Vector2(cx + radar_x, cy + radar_y)
+		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
+			continue
+		# Flashing triangle for missiles
+		var flash: float = fmod(Time.get_ticks_msec() * 0.001, 0.3)
+		if flash < 0.2:
+			var tri_size: float = 4.0
+			draw_line(Vector2(blip.x, blip.y - tri_size), Vector2(blip.x - tri_size, blip.y + tri_size), WARN_RED, 1.5)
+			draw_line(Vector2(blip.x, blip.y - tri_size), Vector2(blip.x + tri_size, blip.y + tri_size), WARN_RED, 1.5)
+			draw_line(Vector2(blip.x - tri_size, blip.y + tri_size), Vector2(blip.x + tri_size, blip.y + tri_size), WARN_RED, 1.5)
+
+	# Label
+	var font := ThemeDB.fallback_font
+	if font:
+		draw_string(font, Vector2(cx - 10, cy - RADAR_RADIUS - 5), "RDR", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
 
 # --- Helpers ---
 

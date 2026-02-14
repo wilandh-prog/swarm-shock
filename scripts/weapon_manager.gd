@@ -12,6 +12,13 @@ var missile_turn_rate: float = 4.0
 var missile_count: int = 1
 var _cooldown: float = 0.0
 
+# Gun
+var gun_damage: float = 5.0
+var gun_speed: float = 5000.0
+var gun_fire_rate: float = 0.08
+var gun_spread: float = 1.5  # degrees
+var _gun_cooldown: float = 0.0
+
 # Lock-on (progressive)
 var locked_target: Node3D = null
 var tracking_target: Node3D = null
@@ -37,6 +44,13 @@ func _process(delta: float) -> void:
 		_cooldown = fire_rate
 		_fire_missiles()
 
+	# Gun (G key)
+	if _gun_cooldown > 0.0:
+		_gun_cooldown -= delta * player.fire_rate_mult
+	if Input.is_key_pressed(KEY_G) and _gun_cooldown <= 0.0:
+		_gun_cooldown = gun_fire_rate
+		_fire_gun()
+
 func _update_lock_on(delta: float) -> void:
 	var heading: float = player._heading
 	var fwd := Vector3(sin(heading), 0.0, -cos(heading))
@@ -52,7 +66,25 @@ func _update_lock_on(delta: float) -> void:
 		tracking_target = null
 		lock_progress = 0.0
 
-	# Find best candidate in cone
+	# If already tracking, stick with it as long as it's in cone
+	if tracking_target and is_instance_valid(tracking_target):
+		var to_tt: Vector3 = tracking_target.global_position - player.global_position
+		var tt_dist: float = to_tt.length()
+		var tt_dot: float = fwd.dot(to_tt / tt_dist) if tt_dist > 1.0 else -1.0
+		if tt_dist < LOCK_RANGE and tt_dot > LOCK_CONE:
+			# Still valid — advance progress
+			var center: float = clampf((tt_dot - LOCK_CONE) / (1.0 - LOCK_CONE), 0.0, 1.0)
+			lock_progress = minf(lock_progress + LOCK_SPEED * center * delta, 1.0)
+			if lock_progress >= 1.0:
+				locked_target = tracking_target
+			return
+		# Tracking target left cone — decay
+		lock_progress = maxf(lock_progress - LOCK_DECAY * delta, 0.0)
+		if lock_progress <= 0.0:
+			tracking_target = null
+		return
+
+	# No current tracking target — find best candidate in cone
 	var best_target: Node3D = null
 	var best_dot: float = LOCK_CONE
 
@@ -69,22 +101,8 @@ func _update_lock_on(delta: float) -> void:
 			best_target = enemy
 
 	if best_target:
-		if best_target != tracking_target:
-			# Switched target — reset progress
-			tracking_target = best_target
-			lock_progress = 0.0
-
-		# Progress proportional to how centered (dot remapped from cone..1 → 0..1)
-		var center: float = clampf((best_dot - LOCK_CONE) / (1.0 - LOCK_CONE), 0.0, 1.0)
-		lock_progress = minf(lock_progress + LOCK_SPEED * center * delta, 1.0)
-
-		if lock_progress >= 1.0:
-			locked_target = tracking_target
-	else:
-		# No target in cone — decay
-		lock_progress = maxf(lock_progress - LOCK_DECAY * delta, 0.0)
-		if lock_progress <= 0.0:
-			tracking_target = null
+		tracking_target = best_target
+		lock_progress = 0.0
 
 func _fire_missiles() -> void:
 	var container: Node = _get_projectile_container()
@@ -110,6 +128,26 @@ func _fire_missiles() -> void:
 			proj.homing_turn_rate = missile_turn_rate
 		container.add_child(proj)
 		proj.global_position = player.global_position
+
+func _fire_gun() -> void:
+	var container: Node = _get_projectile_container()
+	if not container:
+		return
+	var heading: float = player._heading
+	var aim_dir := Vector3(sin(heading), 0.0, -cos(heading))
+	# Random spread
+	var spread_rad: float = deg_to_rad(gun_spread)
+	var sx: float = randf_range(-spread_rad, spread_rad)
+	var sy: float = randf_range(-spread_rad, spread_rad)
+	var dir: Vector3 = aim_dir.rotated(Vector3.UP, sx).rotated(aim_dir.cross(Vector3.UP).normalized(), sy)
+
+	var proj: Area3D = projectile_scene.instantiate()
+	proj.is_bullet = true
+	proj.lifetime = 2.0
+	proj.explosion_radius = 0.0
+	proj.setup(dir, gun_damage * player.damage_mult, gun_speed)
+	container.add_child(proj)
+	proj.global_position = player.global_position
 
 # Upgrade helpers
 func upgrade_weapon_damage(multiplier: float) -> void:
