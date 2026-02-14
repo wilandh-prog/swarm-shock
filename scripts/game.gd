@@ -169,7 +169,7 @@ func _spawn_enemies() -> void:
 	for i in _spawn_count:
 		var angle := randf() * TAU
 		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
-		var spawn_pos := player.global_position + Vector3(cos(angle), randf_range(-50, 50), sin(angle)) * dist
+		var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
 
 		var enemy: Area3D = enemy_scene.instantiate()
 		enemy.target = player

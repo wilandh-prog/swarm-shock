@@ -47,7 +47,6 @@ func _update_lock_on() -> void:
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector3 = enemy.global_position - player.global_position
-		to_enemy.y = 0.0
 		var dist: float = to_enemy.length()
 		if dist > LOCK_RANGE or dist < 10.0:
 			continue
@@ -132,7 +131,6 @@ func _update_reticle() -> void:
 	if locked_target and is_instance_valid(locked_target):
 		_reticle.visible = true
 		_reticle.global_position = locked_target.global_position
-		_reticle.global_position.y = 2.0
 	else:
 		_reticle.visible = false
 

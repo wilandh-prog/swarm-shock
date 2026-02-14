@@ -127,18 +127,14 @@ func _process(delta: float) -> void:
 	# Homing: steer toward target
 	if homing_target and is_instance_valid(homing_target):
 		var to_target := homing_target.global_position - global_position
-		to_target.y = 0.0
 		var dist := to_target.length()
 		if dist > 1.0:
 			var desired := to_target / dist
-			# Smoothly rotate direction toward target
-			var cross_y: float = direction.x * desired.z - direction.z * desired.x
-			var turn := clampf(-cross_y * 10.0, -1.0, 1.0) * homing_turn_rate * delta
-			direction = direction.rotated(Vector3.UP, turn).normalized()
+			# Smoothly rotate direction toward target (full 3D)
+			direction = direction.slerp(desired, homing_turn_rate * delta).normalized()
 			_update_mesh_orientation()
 
 	global_position += direction * speed * delta
-	global_position.y = 0.0
 	_timer += delta
 	if _timer >= lifetime:
 		_explode()
