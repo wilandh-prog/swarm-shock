@@ -370,16 +370,8 @@ func _process(delta: float) -> void:
 	# Always fly forward
 	var forward := Vector3(sin(_heading), 0.0, -cos(_heading))
 	global_position += forward * speed * delta
-	global_position.y = 0.0
-
-	# Despawn if behind player and far away
 	if target and is_instance_valid(target):
-		var behind: Vector3 = global_position - target.global_position
-		behind.y = 0.0
-		var player_fwd := Vector3(sin(target._heading), 0.0, -cos(target._heading))
-		if player_fwd.dot(behind.normalized()) < -0.3 and behind.length() > 600.0:
-			queue_free()
-			return
+		global_position.y = move_toward(global_position.y, target.global_position.y, speed * delta * 0.5)
 
 	# Banking — same as player
 	var target_bank: float = -(_turn_speed / _turn_rate) * MAX_BANK_ANGLE

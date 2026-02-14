@@ -5,7 +5,7 @@ var direction: Vector3 = Vector3.FORWARD
 var speed: float = 3000.0
 var damage: float = 20.0
 var explosion_radius: float = 50.0
-var lifetime: float = 3.0
+var lifetime: float = 8.0
 var _timer: float = 0.0
 var _mesh_root: Node3D
 
@@ -140,7 +140,18 @@ func _process(delta: float) -> void:
 		_explode()
 		return
 
-	# Enemy missiles check proximity to player
+	# Proximity detonation for all homing missiles
+	if homing_target and is_instance_valid(homing_target):
+		var dist: float = global_position.distance_to(homing_target.global_position)
+		if dist < 40.0:
+			if not is_enemy_missile and homing_target.has_method("take_damage"):
+				homing_target.take_damage(damage)
+			elif is_enemy_missile and homing_target.has_method("take_damage"):
+				homing_target.take_damage(damage)
+			_explode()
+			return
+
+	# Enemy missiles check proximity to player (fallback)
 	if is_enemy_missile and homing_target and is_instance_valid(homing_target):
 		var dist: float = global_position.distance_to(homing_target.global_position)
 		if dist < 30.0 and homing_target.has_method("take_damage"):

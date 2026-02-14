@@ -7,8 +7,8 @@ var projectile_scene: PackedScene
 # Weapon stats
 var missile_damage: float = 20.0
 var fire_rate: float = 0.3
-var missile_speed: float = 1200.0
-var missile_turn_rate: float = 3.0
+var missile_speed: float = 2400.0
+var missile_turn_rate: float = 4.0
 var missile_count: int = 1
 var _cooldown: float = 0.0
 
@@ -140,6 +140,9 @@ func _fire_missiles() -> void:
 		return
 	var heading: float = player._heading
 	var aim_dir := Vector3(sin(heading), 0.0, -cos(heading))
+	# Aim toward locked target if available
+	if locked_target and is_instance_valid(locked_target):
+		aim_dir = (locked_target.global_position - player.global_position).normalized()
 	var total: int = missile_count + player.projectile_count_bonus
 	var base_dmg: float = missile_damage * player.damage_mult
 
@@ -150,7 +153,6 @@ func _fire_missiles() -> void:
 		var dir: Vector3 = aim_dir.rotated(Vector3.UP, spread)
 		var proj: Area3D = projectile_scene.instantiate()
 		proj.setup(dir, base_dmg, missile_speed)
-		# Assign homing target
 		if locked_target and is_instance_valid(locked_target):
 			proj.homing_target = locked_target
 			proj.homing_turn_rate = missile_turn_rate

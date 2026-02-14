@@ -2,8 +2,8 @@ shader_type spatial;
 render_mode unshaded;
 // Ocean with tropical islands, beaches, forests, flowers.
 
-uniform vec4 deep_color : source_color = vec4(0.005, 0.035, 0.12, 1.0);
-uniform vec4 shallow_color : source_color = vec4(0.05, 0.22, 0.38, 1.0);
+uniform vec4 deep_color : source_color = vec4(0.02, 0.12, 0.28, 1.0);
+uniform vec4 shallow_color : source_color = vec4(0.08, 0.3, 0.5, 1.0);
 uniform vec4 sand_color : source_color = vec4(0.82, 0.75, 0.55, 1.0);
 uniform vec4 grass_light : source_color = vec4(0.22, 0.52, 0.15, 1.0);
 uniform vec4 grass_dark : source_color = vec4(0.08, 0.28, 0.06, 1.0);
@@ -12,7 +12,7 @@ uniform vec4 rock_color : source_color = vec4(0.4, 0.38, 0.32, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.7, 0.9, 0.95, 1.0);
 uniform float wave_height : hint_range(1.0, 20.0) = 8.0;
 uniform float terrain_height : hint_range(5.0, 60.0) = 30.0;
-uniform float water_level : hint_range(0.1, 0.7) = 0.42;
+uniform float water_level : hint_range(0.1, 1.0) = 1.0;
 uniform vec2 offset = vec2(0.0, 0.0);
 uniform float time_val : hint_range(0.0, 100000.0) = 0.0;
 
@@ -167,40 +167,39 @@ void fragment() {
 	float below = max(water_level - terrain, 0.0);
 	float depth = clamp(below / 0.25, 0.0, 1.0);
 
-	vec3 turquoise = vec3(0.1, 0.35, 0.4);
-	vec3 water_col = mix(shallow_color.rgb, turquoise, depth * 0.3);
-	water_col = mix(water_col, deep_color.rgb, depth * depth);
-
-	// Near-shore turquoise glow
-	float near_shore = 1.0 - smoothstep(0.0, 0.08, below);
-	water_col = mix(water_col, vec3(0.08, 0.3, 0.35), near_shore * 0.5);
+	// Color variation using terrain noise for natural patches
+	vec3 ocean_mid = vec3(0.06, 0.25, 0.45);
+	vec3 turquoise = vec3(0.1, 0.38, 0.45);
+	float color_var = fbm2(world_uv * 0.0006 + vec2(200.0, 300.0));
+	vec3 water_col = mix(shallow_color.rgb, ocean_mid, color_var * 0.6);
+	water_col = mix(water_col, turquoise, (1.0 - depth) * 0.3);
+	water_col = mix(water_col, deep_color.rgb, depth * depth * 0.6);
 
 	// Wave color variation
 	float w = wave_at(world_uv, t);
 	float wave_bright = smoothstep(-0.2, 0.5, w);
-	water_col = mix(water_col, shallow_color.rgb * 1.2, wave_bright * 0.15);
+	water_col = mix(water_col, shallow_color.rgb * 1.3, wave_bright * 0.2);
 
-	// Caustics
-	float c = caustic(world_uv * 0.015 + vec2(t * 0.3, t * 0.2), t);
-	float caust = smoothstep(0.18, 0.0, c) * 0.35;
-	float shallow_mask = 1.0 - depth;
-	water_col += vec3(0.1, 0.3, 0.4) * caust * (0.3 + shallow_mask * 0.7);
+	// Wave troughs slightly darker
+	float wave_dark = smoothstep(0.1, -0.4, w);
+	water_col = mix(water_col, deep_color.rgb, wave_dark * 0.15);
 
-	// Cheap specular from simple wave derivatives
-	vec2 wuv = world_uv * 0.004;
-	float dx = cos(wuv.x * 3.0 + t * 1.2) * 0.75 + cos((wuv.x + wuv.y) * 2.0 + t * 1.5) * 0.3;
-	float dz = cos(wuv.y * 2.5 + t * 0.9) * 0.5 + cos((wuv.x + wuv.y) * 2.0 + t * 1.5) * 0.3;
-	vec3 normal_water = normalize(vec3(dx * 0.3, 1.0, dz * 0.3));
-	vec3 half_v = normalize(vec3(-0.4, 0.7, -0.3) + vec3(0.0, 1.0, 0.6));
-	float spec = pow(max(dot(normal_water, half_v), 0.0), 80.0);
-	water_col += vec3(1.0, 0.95, 0.8) * spec * 0.7;
+	// Caustics — brighter and more visible
+	float c = caustic(world_uv * 0.012 + vec2(t * 0.3, t * 0.2), t);
+	float caust = smoothstep(0.15, 0.0, c) * 0.5;
+	water_col += vec3(0.15, 0.35, 0.45) * caust;
 
-	// Shore foam on water side
-	float shore_f = 1.0 - smoothstep(0.0, 0.04, below);
-	float foam_noise = fbm2(world_uv * 0.015 + vec2(t * 0.5, -t * 0.4));
-	shore_f *= smoothstep(0.25, 0.6, foam_noise);
-	float foam_anim = sin(world_uv.x * 0.05 + t * 2.5) * 0.3 + 0.7;
-	water_col = mix(water_col, foam_color.rgb, shore_f * foam_anim * 0.6);
+	// Second layer of caustics at different scale for richness
+	float c2 = caustic(world_uv * 0.005 + vec2(-t * 0.15, t * 0.1), t * 0.7);
+	float caust2 = smoothstep(0.2, 0.0, c2) * 0.25;
+	water_col += vec3(0.1, 0.25, 0.35) * caust2;
+
+	// Whitecap foam scattered across ocean
+	float foam_n1 = fbm2(world_uv * 0.008 + vec2(t * 0.3, -t * 0.2));
+	float foam_n2 = noise(world_uv * 0.025 + vec2(t * 0.6, t * 0.4));
+	float whitecap = smoothstep(0.55, 0.7, foam_n1) * smoothstep(0.5, 0.65, foam_n2);
+	float foam_flicker = sin(world_uv.x * 0.03 + t * 3.0) * 0.3 + 0.7;
+	water_col = mix(water_col, foam_color.rgb, whitecap * foam_flicker * 0.6);
 
 	// --- BLEND ---
 	vec3 color = mix(water_col, land_color, land_factor);

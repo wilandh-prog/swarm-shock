@@ -11,15 +11,15 @@ var camera: Camera3D
 
 # Enemy spawning
 var _spawn_timer: float = 0.0
-var _spawn_interval: float = 1.2
-var _spawn_count: int = 2
+var _spawn_interval: float = 5.0
+var _spawn_count: int = 1
 var _difficulty_timer: float = 0.0
 var _difficulty_level: int = 0
 var _enemy_speed_mult: float = 1.0
 const DIFFICULTY_INTERVAL: float = 30.0
 const SPAWN_DISTANCE_MIN: float = 1500.0
 const SPAWN_DISTANCE_MAX: float = 2500.0
-const MAX_ENEMIES: int = 150
+const MAX_ENEMIES: int = 7
 
 # Chain lightning
 var _chain_arcs: Array[Dictionary] = []
@@ -37,6 +37,12 @@ var enemy_scene: PackedScene
 var xp_gem_scene: PackedScene
 var volt_pickup_scene: PackedScene
 var player_scene: PackedScene
+
+# Camera chase
+const CAM_DIST: float = 350.0
+const CAM_HEIGHT: float = 250.0
+const CAM_LERP: float = 5.0
+var _cam_initialized: bool = false
 
 # Background
 var _bg_shader_mat: ShaderMaterial
@@ -58,15 +64,13 @@ func _ready() -> void:
 	player.global_position = Vector3(0, 2000, 0)
 	player.died.connect(_on_player_died)
 
-	# Camera (orthographic, top-down)
+	# Camera (chase cam behind player)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 	camera.fov = 70.0
-	camera.position = Vector3(0, 250, 350)
-	camera.rotation_degrees = Vector3(-30, 0, 0)
 	camera.near = 1.0
 	camera.far = 50000.0
-	player.add_child(camera)
+	add_child(camera)
 	camera.make_current()
 
 	# Ground plane with background shader
@@ -125,6 +129,16 @@ func _process(delta: float) -> void:
 	_difficulty_timer += delta
 	_attract_timer += delta
 	_game_time += delta
+
+	# Chase camera: smooth follow behind player
+	var behind := Vector3(-sin(player._heading), 0.0, cos(player._heading)) * CAM_DIST
+	var target_pos := player.global_position + behind + Vector3(0, CAM_HEIGHT, 0)
+	if not _cam_initialized:
+		camera.global_position = target_pos
+		_cam_initialized = true
+	else:
+		camera.global_position = camera.global_position.lerp(target_pos, CAM_LERP * delta)
+	camera.look_at(player.global_position + player.facing_direction * 200.0, Vector3.UP)
 
 	# Background follows player so terrain never ends
 	if _ground:
