@@ -66,28 +66,28 @@ const TYPE_CONFIG := {
 		"xp": 1, "volt_chance": 0.1, "radius": 14.0,
 		"color": Color(0.22, 0.24, 0.26),
 		"model": "res://assets/enemy1.glb",
-		"scale": 18.0, "turn_rate": 1.2,
+		"scale": 30.0, "turn_rate": 1.2,
 	},
 	EnemyType.FAST: {
 		"hp": 15.0, "speed": 2000.0, "damage": 8.0,
 		"xp": 1, "volt_chance": 0.08, "radius": 10.0,
 		"color": Color(0.28, 0.30, 0.32),
 		"model": "res://assets/enemy2.glb",
-		"scale": 15.0, "turn_rate": 0.8,
+		"scale": 25.0, "turn_rate": 0.8,
 	},
 	EnemyType.TANK: {
 		"hp": 100.0, "speed": 1000.0, "damage": 20.0,
 		"xp": 3, "volt_chance": 0.25, "radius": 22.0,
 		"color": Color(0.18, 0.20, 0.22),
 		"model": "res://assets/enemy3.glb",
-		"scale": 26.0, "turn_rate": 0.6,
+		"scale": 40.0, "turn_rate": 0.6,
 	},
 	EnemyType.SWARM: {
 		"hp": 10.0, "speed": 1800.0, "damage": 5.0,
 		"xp": 1, "volt_chance": 0.05, "radius": 8.0,
 		"color": Color(0.25, 0.27, 0.28),
 		"model": "res://assets/enemy4.glb",
-		"scale": 12.0, "turn_rate": 1.0,
+		"scale": 20.0, "turn_rate": 1.0,
 	},
 }
 

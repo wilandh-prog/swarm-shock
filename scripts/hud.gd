@@ -9,6 +9,7 @@ extends CanvasLayer
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var upgrade_panel: PanelContainer = $UpgradePanel
 @onready var upgrade_buttons: VBoxContainer = $UpgradePanel/MarginContainer/VBoxContainer/UpgradeButtons
+@onready var fighter_hud: Control = $FighterHUD
 
 var _player: CharacterBody3D = null
 var _upgrade_pool: Array[Dictionary] = []
@@ -28,6 +29,8 @@ func setup(player: CharacterBody3D) -> void:
 	if _player:
 		_player.health_changed.connect(_on_health_changed)
 		_display_health = _player.health
+	if fighter_hud:
+		fighter_hud.player = _player
 	_build_upgrade_pool()
 
 # --- Neon UI Theme ---

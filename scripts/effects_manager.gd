@@ -17,7 +17,6 @@ var _flash_decay: float = 5.0
 # Shake
 var _shake_intensity: float = 0.0
 var _shake_timer: float = 0.0
-var _camera_base_pos: Vector3 = Vector3(0, 250, 350)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -99,11 +98,11 @@ func _apply_shake() -> void:
 	var cam := get_viewport().get_camera_3d()
 	if not cam:
 		return
-	var offset_x := randf_range(-1.0, 1.0) * _shake_intensity
-	var offset_z := randf_range(-1.0, 1.0) * _shake_intensity
-	cam.position = _camera_base_pos + Vector3(offset_x, 0, offset_z)
+	cam.h_offset = randf_range(-1.0, 1.0) * _shake_intensity * 0.1
+	cam.v_offset = randf_range(-1.0, 1.0) * _shake_intensity * 0.1
 
 func _reset_camera_offset() -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam:
-		cam.position = _camera_base_pos
+		cam.h_offset = 0.0
+		cam.v_offset = 0.0
