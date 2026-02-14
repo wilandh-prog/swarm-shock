@@ -1,0 +1,63 @@
+extends Node
+## Handles saving and loading persistent game data.
+## Uses CrazySdk Data module on web, file system locally.
+
+const SAVE_KEY: String = "swarm_shock_save"
+const SAVE_PATH: String = "user://save_data.json"
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	load_all()
+
+# --- Save ---
+
+func save_all() -> void:
+	var data := {
+		"volts": GameManager.volts,
+		"unlocked_characters": GameManager.unlocked_characters,
+		"upgrade_levels": GameManager.upgrade_levels,
+		"selected_character": GameManager.selected_character,
+	}
+	var json_string := JSON.stringify(data)
+
+	if OS.has_feature("web"):
+		CrazySdk.save_data(SAVE_KEY, json_string)
+	else:
+		var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+		if file:
+			file.store_string(json_string)
+			file.close()
+
+# --- Load ---
+
+func load_all() -> void:
+	var json_string: String = ""
+
+	if OS.has_feature("web"):
+		json_string = CrazySdk.load_data(SAVE_KEY)
+	else:
+		if FileAccess.file_exists(SAVE_PATH):
+			var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+			if file:
+				json_string = file.get_as_text()
+				file.close()
+
+	if json_string.is_empty():
+		return
+
+	var json := JSON.new()
+	var error := json.parse(json_string)
+	if error != OK:
+		push_warning("SaveManager: Failed to parse save data")
+		return
+
+	var data: Dictionary = json.data
+	if data.has("volts"):
+		GameManager.volts = int(data["volts"])
+	if data.has("unlocked_characters"):
+		GameManager.unlocked_characters.assign(data["unlocked_characters"])
+	if data.has("upgrade_levels"):
+		for key in data["upgrade_levels"]:
+			GameManager.upgrade_levels[key] = int(data["upgrade_levels"][key])
+	if data.has("selected_character"):
+		GameManager.selected_character = str(data["selected_character"])

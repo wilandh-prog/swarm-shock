@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Claude Code
+.claude/
+
+# Windows artifacts
+nul
+
+# Debug output
+stderr.txt
+stdout.txt
