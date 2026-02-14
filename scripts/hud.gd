@@ -311,3 +311,138 @@ func _is_upgrade_taken(id: String) -> bool:
 
 func _mark_upgrade_taken(id: String) -> void:
 	_taken_upgrades.append(id)
+
+# --- Landing guidance ---
+
+func start_landing_guidance(carrier: MeshInstance3D, heading: float, deck_y: float) -> void:
+	if fighter_hud:
+		fighter_hud.start_landing(carrier, heading, deck_y)
+
+func stop_landing_guidance() -> void:
+	if fighter_hud:
+		fighter_hud.landing_active = false
+
+# --- Victory panel ---
+
+var _victory_panel: PanelContainer = null
+
+func show_victory() -> void:
+	get_tree().paused = true
+
+	_victory_panel = PanelContainer.new()
+	_victory_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_victory_panel.custom_minimum_size = Vector2(400, 350)
+
+	# Panel style (green/gold neon)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.06, 0.03, 0.95)
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(0.3, 1.0, 0.4, 0.7)
+	panel_style.corner_radius_top_left = 16
+	panel_style.corner_radius_top_right = 16
+	panel_style.corner_radius_bottom_left = 16
+	panel_style.corner_radius_bottom_right = 16
+	panel_style.shadow_color = Color(0.2, 1.0, 0.3, 0.2)
+	panel_style.shadow_size = 12
+	_victory_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	_victory_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	margin.add_child(vbox)
+
+	# Title
+	var title := Label.new()
+	title.text = "MISSION COMPLETE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.3, 1.0, 0.4))
+	vbox.add_child(title)
+
+	# Separator
+	var sep := HSeparator.new()
+	sep.add_theme_stylebox_override("separator", StyleBoxLine.new())
+	vbox.add_child(sep)
+
+	# Stats
+	var minutes := int(GameManager.run_time) / 60
+	var seconds := int(GameManager.run_time) % 60
+	_add_stat_row(vbox, "TIME", "%02d:%02d" % [minutes, seconds])
+	_add_stat_row(vbox, "KILLS", str(GameManager.run_kills))
+	_add_stat_row(vbox, "LEVEL", str(GameManager.run_level))
+	_add_stat_row(vbox, "VOLTS", str(GameManager.run_volts_earned))
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 10
+	vbox.add_child(spacer)
+
+	# Play Again button
+	var retry_btn := Button.new()
+	retry_btn.text = "PLAY AGAIN"
+	retry_btn.custom_minimum_size.y = 45
+	retry_btn.add_theme_font_size_override("font_size", 18)
+	retry_btn.add_theme_color_override("font_color", Color(0.9, 1.0, 0.9))
+	var green := Color(0.2, 0.9, 0.4)
+	retry_btn.add_theme_stylebox_override("normal", _create_button_style(green, Color(0.03, 0.1, 0.05, 0.9)))
+	retry_btn.add_theme_stylebox_override("hover", _create_button_style(green.lightened(0.3), Color(0.05, 0.15, 0.08, 0.95)))
+	retry_btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.08, 0.2, 0.1, 1.0)))
+	retry_btn.pressed.connect(func():
+		get_tree().paused = false
+		get_tree().change_scene_to_file("res://scenes/game.tscn")
+	)
+	vbox.add_child(retry_btn)
+
+	# Main Menu button
+	var menu_btn := Button.new()
+	menu_btn.text = "MAIN MENU"
+	menu_btn.custom_minimum_size.y = 45
+	menu_btn.add_theme_font_size_override("font_size", 18)
+	menu_btn.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
+	var gray := Color(0.5, 0.5, 0.6)
+	menu_btn.add_theme_stylebox_override("normal", _create_button_style(gray, Color(0.05, 0.05, 0.08, 0.9)))
+	menu_btn.add_theme_stylebox_override("hover", _create_button_style(gray.lightened(0.3), Color(0.08, 0.08, 0.12, 0.95)))
+	menu_btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.1, 0.1, 0.15, 1.0)))
+	menu_btn.pressed.connect(func():
+		get_tree().paused = false
+		get_tree().change_scene_to_file("res://scenes/menu.tscn")
+	)
+	vbox.add_child(menu_btn)
+
+	add_child(_victory_panel)
+
+	# Animate in
+	_victory_panel.modulate.a = 0.0
+	_victory_panel.scale = Vector2(0.7, 0.7)
+	_victory_panel.pivot_offset = _victory_panel.size / 2.0
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(_victory_panel, "modulate:a", 1.0, 0.3)
+	tween.parallel().tween_property(_victory_panel, "scale", Vector2.ONE, 0.5)
+
+func _add_stat_row(parent: VBoxContainer, label_text: String, value_text: String) -> void:
+	var row := HBoxContainer.new()
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_color_override("font_color", Color(0.5, 0.8, 0.5))
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lbl)
+
+	var val := Label.new()
+	val.text = value_text
+	val.add_theme_font_size_override("font_size", 18)
+	val.add_theme_color_override("font_color", Color(0.9, 1.0, 0.9))
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(val)
+
+	parent.add_child(row)

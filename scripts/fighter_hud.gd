@@ -14,6 +14,13 @@ var _smooth_speed: float = 0.0
 var _smooth_alt: float = 0.0
 var _smooth_g: float = 1.0
 
+# Landing guidance
+var landing_active: bool = false
+var landing_carrier: MeshInstance3D = null
+var landing_heading: float = 0.0
+var landing_deck_y: float = 150.0
+var _landing_debug_printed: bool = false
+
 func _process(delta: float) -> void:
 	if not player or not is_instance_valid(player):
 		return
@@ -40,6 +47,8 @@ func _draw() -> void:
 	_draw_g_meter(ss)
 	_draw_flare_status(ss)
 	_draw_radar(ss)
+	if landing_active:
+		_draw_landing_guidance(ss)
 
 # --- Heading tape (top center) ---
 
@@ -102,8 +111,8 @@ func _draw_speed_tape(ss: Vector2) -> void:
 	draw_rect(Rect2(x - 50, cy - half_h, 78, half_h * 2.0), HUD_BG)
 	draw_line(Vector2(x + 28, cy - half_h), Vector2(x + 28, cy + half_h), HUD_GREEN, 1.0)
 
-	# Speed in display units (game speed / 100)
-	var spd: float = _smooth_speed * 0.01
+	# Speed in knots (game speed × 2.5 so cruise ~500kt)
+	var spd: float = _smooth_speed * 2.5
 	var ppu: float = 4.0
 	var base: int = int(floor(spd))
 	var frac: float = spd - float(base)
@@ -437,10 +446,121 @@ func _draw_radar(ss: Vector2) -> void:
 			draw_line(Vector2(blip.x, blip.y - tri_size), Vector2(blip.x + tri_size, blip.y + tri_size), WARN_RED, 1.5)
 			draw_line(Vector2(blip.x - tri_size, blip.y + tri_size), Vector2(blip.x + tri_size, blip.y + tri_size), WARN_RED, 1.5)
 
+	# Carrier blip (green square)
+	if landing_active and landing_carrier and is_instance_valid(landing_carrier):
+		var crel: Vector3 = landing_carrier.global_position - player.global_position
+		var cblip := _radar_blip(crel, hdg, cx, cy)
+		if cblip.distance_to(Vector2(cx, cy)) <= RADAR_RADIUS:
+			draw_rect(Rect2(cblip.x - 5, cblip.y - 5, 10, 10), HUD_GREEN)
+
 	# Label
 	var font := ThemeDB.fallback_font
 	if font:
 		draw_string(font, Vector2(cx - 10, cy - RADAR_RADIUS - 5), "RDR", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
+
+# --- Landing guidance ---
+
+const HUD_YELLOW := Color(1.0, 0.8, 0.2, 0.9)
+const HUD_ORANGE := Color(1.0, 0.5, 0.2, 0.9)
+
+func start_landing(carrier: MeshInstance3D, heading: float, deck_y: float) -> void:
+	landing_active = true
+	landing_carrier = carrier
+	landing_heading = heading
+	landing_deck_y = deck_y
+	print("Fighter HUD: landing mode ON, heading=", rad_to_deg(heading))
+
+func _draw_landing_guidance(ss: Vector2) -> void:
+	if not player or not landing_carrier:
+		return
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+
+	if not _landing_debug_printed:
+		_landing_debug_printed = true
+		print("Landing guidance drawing! Speed=", player._current_speed, " Carrier=", landing_carrier.global_position)
+
+	var to_carrier: Vector3 = landing_carrier.global_position - player.global_position
+	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
+	var alt_diff: float = player.global_position.y - landing_deck_y
+	var heading_diff: float = fposmod(player._heading - landing_heading + PI, TAU) - PI
+
+	var commands: Array[Dictionary] = []
+
+	# Heading correction
+	if absf(heading_diff) > 0.1:
+		if heading_diff > 0:
+			commands.append({"text": "TURN LEFT  [A]", "color": HUD_GREEN})
+		else:
+			commands.append({"text": "TURN RIGHT [D]", "color": HUD_GREEN})
+	else:
+		commands.append({"text": "ON COURSE", "color": HUD_GREEN})
+
+	# Speed — thresholds relative to cruise speed
+	var knots: int = int(player._current_speed * 2.5)
+	var cruise: float = player.move_speed
+	var landing_max: float = cruise * 0.35
+	if player._current_speed >= cruise * 0.7:
+		commands.append({"text": "BRAKE! [S] %dKT" % knots, "color": WARN_RED})
+	elif player._current_speed >= landing_max:
+		commands.append({"text": "SLOW DOWN [S] %dKT" % knots, "color": HUD_ORANGE})
+	else:
+		commands.append({"text": "SPEED OK %dKT" % knots, "color": HUD_GREEN})
+
+	# Altitude (glide slope based on distance)
+	if dist_horiz < 6000.0:
+		var ideal_alt: float = landing_deck_y + dist_horiz * 0.08
+		ideal_alt = maxf(ideal_alt, landing_deck_y + 50.0)
+		var alt_error: float = player.global_position.y - ideal_alt
+
+		if alt_error > 300.0:
+			commands.append({"text": "DESCEND", "color": HUD_ORANGE})
+		elif alt_error > 80.0:
+			commands.append({"text": "DESCEND SLOWLY", "color": HUD_YELLOW})
+		elif alt_error < -150.0:
+			commands.append({"text": "PULL UP!", "color": WARN_RED})
+		elif alt_error < -30.0:
+			commands.append({"text": "CLIMB SLIGHTLY", "color": HUD_YELLOW})
+		else:
+			commands.append({"text": "ON GLIDESLOPE", "color": HUD_GREEN})
+
+	# Final approach: lateral correction
+	if dist_horiz < 1500.0:
+		var lateral: float = _lateral_offset(to_carrier)
+		if absf(lateral) > 200.0:
+			if lateral > 0:
+				commands.append({"text": "CORRECT RIGHT", "color": HUD_YELLOW})
+			else:
+				commands.append({"text": "CORRECT LEFT", "color": HUD_YELLOW})
+
+	# Distance readout
+	commands.append({"text": "DIST: %dM" % int(dist_horiz), "color": HUD_GREEN_DIM})
+
+	# Banner
+	var banner: String = "FINAL APPROACH" if dist_horiz < 1500.0 else "CARRIER APPROACH"
+	var banner_color: Color = HUD_YELLOW if dist_horiz < 1500.0 else HUD_GREEN
+
+	# Draw centered below the heading tape
+	var cx: float = ss.x * 0.5
+	var y_start: float = ss.y * 0.28
+
+	# Banner background
+	var bw: float = 220.0
+	draw_rect(Rect2(cx - bw * 0.5, y_start - 24, bw, 28), Color(0, 0.03, 0, 0.6))
+	draw_rect(Rect2(cx - bw * 0.5, y_start - 24, bw, 28), banner_color * Color(1, 1, 1, 0.5), false, 1.5)
+	draw_string(font, Vector2(cx - bw * 0.5 + 10, y_start - 2), banner, HORIZONTAL_ALIGNMENT_CENTER, bw - 20, 18, banner_color)
+
+	# Commands stack
+	for i in commands.size():
+		var cmd: Dictionary = commands[i]
+		var y_pos: float = y_start + 14 + i * 24
+		draw_string(font, Vector2(cx - 90, y_pos), cmd["text"], HORIZONTAL_ALIGNMENT_CENTER, 180, 16, cmd["color"])
+
+func _lateral_offset(to_carrier: Vector3) -> float:
+	var runway_dir := Vector3(sin(landing_heading), 0.0, -cos(landing_heading))
+	var perp := Vector3(-runway_dir.z, 0.0, runway_dir.x)
+	return to_carrier.dot(perp)
 
 # --- Helpers ---
 

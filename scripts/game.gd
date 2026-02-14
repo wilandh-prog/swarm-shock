@@ -9,17 +9,15 @@ extends Node3D
 var player: CharacterBody3D
 var camera: Camera3D
 
-# Enemy spawning
-var _spawn_timer: float = 0.0
-var _spawn_interval: float = 5.0
-var _spawn_count: int = 1
-var _difficulty_timer: float = 0.0
-var _difficulty_level: int = 0
-var _enemy_speed_mult: float = 1.0
-const DIFFICULTY_INTERVAL: float = 30.0
+# Wave spawning
+var _current_wave: int = 0
+var _wave_spawned: bool = false
+const WAVES: Array[int] = [5, 5]  # enemies per wave, total 10
 const SPAWN_DISTANCE_MIN: float = 1500.0
 const SPAWN_DISTANCE_MAX: float = 2500.0
-const MAX_ENEMIES: int = 7
+const WAVE_DELAY: float = 2.0  # seconds between waves
+var _wave_delay_timer: float = 0.0
+var _waiting_for_next_wave: bool = false
 
 # Chain lightning
 var _chain_arcs: Array[Dictionary] = []
@@ -52,6 +50,21 @@ var _game_time: float = 0.0
 # Ambient particles
 var _ambient_particles: CPUParticles3D
 
+# Carrier
+var _carrier: MeshInstance3D
+
+# Landing sequence
+enum GamePhase { COMBAT, LANDING_APPROACH, LANDED }
+var _phase: GamePhase = GamePhase.COMBAT
+var _carrier_heading: float = 0.0
+var _carrier_deck_y: float = 150.0
+var _landing_timer: float = 0.0
+const LANDING_ZONE_RADIUS: float = 400.0
+const LANDING_ALT_THRESHOLD: float = 120.0
+const LANDING_SPEED_FACTOR: float = 0.35  # must brake to 35% of cruise speed
+const LANDING_HEADING_TOL: float = 0.35  # ~20 degrees
+
+
 func _ready() -> void:
 	enemy_scene = load("res://scenes/entities/enemy.tscn")
 	xp_gem_scene = load("res://scenes/entities/xp_gem.tscn")
@@ -75,6 +88,9 @@ func _ready() -> void:
 
 	# Ground plane with background shader
 	_setup_background()
+
+	# Aircraft carrier on the ocean
+	_setup_carrier()
 
 	# Directional light
 	var dir_light := DirectionalLight3D.new()
@@ -121,12 +137,22 @@ func _setup_background() -> void:
 
 	add_child(_ground)
 
+func _setup_carrier() -> void:
+	var carrier_mesh: Mesh = load("res://assets/carrier/essex_scb-125_generic.obj")
+	if not carrier_mesh:
+		return
+	_carrier = MeshInstance3D.new()
+	_carrier.mesh = carrier_mesh
+	# OBJ is ~4 units long; scale 500 = ~2000 unit carrier
+	_carrier.scale = Vector3(500.0, 500.0, 500.0)
+	_carrier.position = Vector3(0, -9999, 0)  # hidden until landing
+	_carrier.visible = false
+	add_child(_carrier)
+
 func _process(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 
-	_spawn_timer += delta
-	_difficulty_timer += delta
 	_attract_timer += delta
 	_game_time += delta
 
@@ -148,15 +174,29 @@ func _process(delta: float) -> void:
 		_bg_shader_mat.set_shader_parameter("offset", Vector2(player.global_position.x, player.global_position.z))
 		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
 
-	# Spawn enemies
-	if _spawn_timer >= _spawn_interval:
-		_spawn_timer = 0.0
-		_spawn_enemies()
+	# Wave spawning
+	if _current_wave < WAVES.size():
+		if not _wave_spawned:
+			_spawn_wave(_current_wave)
+			_wave_spawned = true
+		elif _waiting_for_next_wave:
+			_wave_delay_timer += delta
+			if _wave_delay_timer >= WAVE_DELAY:
+				_waiting_for_next_wave = false
+				_wave_delay_timer = 0.0
+				_current_wave += 1
+				_wave_spawned = false
+		elif enemy_container.get_child_count() == 0:
+			_waiting_for_next_wave = true
+			_wave_delay_timer = 0.0
 
-	# Difficulty ramp
-	if _difficulty_timer >= DIFFICULTY_INTERVAL:
-		_difficulty_timer = 0.0
-		_increase_difficulty()
+	# Landing trigger: all waves done and all enemies dead
+	if _phase == GamePhase.COMBAT and _current_wave >= WAVES.size() and enemy_container.get_child_count() == 0:
+		_begin_landing_sequence()
+
+	# Landing approach update
+	if _phase == GamePhase.LANDING_APPROACH:
+		_update_landing(delta)
 
 	# Pickup attraction
 	if _attract_timer >= ATTRACT_CHECK_INTERVAL:
@@ -174,13 +214,14 @@ func _process(delta: float) -> void:
 
 # --- Spawning ---
 
-func _spawn_enemies() -> void:
+func _spawn_wave(wave_index: int) -> void:
 	if not enemy_scene or not is_instance_valid(player):
 		return
-	if enemy_container.get_child_count() >= MAX_ENEMIES:
-		return
 
-	for i in _spawn_count:
+	var count: int = WAVES[wave_index]
+	var difficulty_mult: float = 1.0 + wave_index * 0.2
+
+	for i in count:
 		var angle := randf() * TAU
 		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
 		var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
@@ -188,33 +229,25 @@ func _spawn_enemies() -> void:
 		var enemy: Area3D = enemy_scene.instantiate()
 		enemy.target = player
 
-		var type_roll := randf()
-		if _difficulty_level >= 4 and type_roll < 0.1:
-			enemy.configure(enemy.EnemyType.TANK, 1.0 + _difficulty_level * 0.15)
-		elif _difficulty_level >= 2 and type_roll < 0.3:
-			enemy.configure(enemy.EnemyType.FAST, 1.0 + _difficulty_level * 0.15)
-		elif _difficulty_level >= 1 and type_roll < 0.2:
-			enemy.configure(enemy.EnemyType.SWARM, 1.0 + _difficulty_level * 0.15)
+		# Wave 1: all BASIC, Wave 2: mix in FAST and SWARM
+		if wave_index >= 1:
+			var type_roll := randf()
+			if type_roll < 0.3:
+				enemy.configure(enemy.EnemyType.FAST, difficulty_mult)
+			elif type_roll < 0.5:
+				enemy.configure(enemy.EnemyType.SWARM, difficulty_mult)
+			else:
+				enemy.configure(enemy.EnemyType.BASIC, difficulty_mult)
 		else:
-			enemy.configure(enemy.EnemyType.BASIC, 1.0 + _difficulty_level * 0.15)
+			enemy.configure(enemy.EnemyType.BASIC, difficulty_mult)
 
-		# Point enemy toward player on spawn (incoming bogey!)
 		var to_player := player.global_position - spawn_pos
 		to_player.y = 0.0
 		enemy._heading = atan2(to_player.x, -to_player.z)
-		# Ramp enemy speed with difficulty
-		enemy.speed *= _enemy_speed_mult
 
 		enemy.enemy_died.connect(_on_enemy_died)
 		enemy_container.add_child(enemy)
 		enemy.global_position = spawn_pos
-
-func _increase_difficulty() -> void:
-	_difficulty_level += 1
-	_spawn_interval = maxf(_spawn_interval * 0.88, 0.25)
-	_spawn_count = mini(_spawn_count + 1, 15)
-	# Enemies get faster each wave — ramp toward Top Gun insanity
-	_enemy_speed_mult = 1.0 + _difficulty_level * 0.15
 
 # --- Enemy death ---
 
@@ -356,6 +389,75 @@ func _attract_nearby_pickups() -> void:
 			var dist: float = player.global_position.distance_to(pickup.global_position)
 			if dist <= player.pickup_range:
 				pickup.attract_to(player)
+
+# --- Landing sequence ---
+
+func _begin_landing_sequence() -> void:
+	_phase = GamePhase.LANDING_APPROACH
+	_landing_timer = 0.0
+
+	# Position carrier 8000 units ahead of player
+	var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
+	var carrier_pos := player.global_position + forward * 8000.0
+	carrier_pos.y = _carrier_deck_y
+	_carrier.global_position = carrier_pos
+	_carrier.visible = true
+
+	# Align carrier: bow same direction as player nose
+	# look_at aligns -Z with forward, then rotate -90° so X axis (model long axis) = forward
+	# Extra ~8° to align angled flight deck with approach path
+	var look_target := _carrier.global_position + forward
+	_carrier.look_at(Vector3(look_target.x, _carrier_deck_y, look_target.z), Vector3.UP)
+	_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0))
+	_carrier_heading = player._heading
+
+	print("=== LANDING SEQUENCE STARTED ===")
+	print("Carrier pos: ", _carrier.global_position)
+	print("Player heading: ", rad_to_deg(player._heading))
+	print("Player speed: ", player._current_speed)
+
+	# Tell HUD to start landing guidance
+	hud.start_landing_guidance(_carrier, _carrier_heading, _carrier_deck_y)
+
+	EffectsManager.screen_flash(Color(0.3, 0.9, 0.5), 0.15)
+
+func _update_landing(_delta: float) -> void:
+	if not is_instance_valid(player) or not is_instance_valid(_carrier):
+		return
+
+	var to_carrier: Vector3 = _carrier.global_position - player.global_position
+	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
+	var alt_diff: float = player.global_position.y - _carrier_deck_y
+	var heading_diff: float = absf(fposmod(player._heading - _carrier_heading + PI, TAU) - PI)
+
+	# Check landing conditions — speed threshold relative to cruise speed
+	var landing_speed_max: float = player.move_speed * LANDING_SPEED_FACTOR
+	var speed_ok: bool = player._current_speed < landing_speed_max
+	var dist_ok := dist_horiz < LANDING_ZONE_RADIUS
+	var alt_ok := alt_diff < LANDING_ALT_THRESHOLD and alt_diff > -50.0
+	var hdg_ok := heading_diff < LANDING_HEADING_TOL
+
+	if dist_ok and alt_ok and hdg_ok and speed_ok:
+		_landing_timer += _delta
+		if _landing_timer > 0.5:
+			print(">>> LANDING SUCCESS! speed=%.0f (max=%.0f)" % [player._current_speed, landing_speed_max])
+			_on_landing_success()
+	else:
+		_landing_timer = maxf(_landing_timer - _delta * 2.0, 0.0)
+
+func _on_landing_success() -> void:
+	_phase = GamePhase.LANDED
+	player._current_speed = 0.0
+	player.set_physics_process(false)
+
+	EffectsManager.screen_flash(Color(0.3, 1.0, 0.5), 0.3)
+	EffectsManager.chromatic_pulse(0.01)
+
+	hud.stop_landing_guidance()
+
+	await get_tree().create_timer(1.5).timeout
+	GameManager.end_run()
+	hud.show_victory()
 
 # --- Player events ---
 
