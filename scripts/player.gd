@@ -34,14 +34,16 @@ const TURN_DECEL: float = 4.0
 const SPEED_ACCEL: float = 1000.0
 const MIN_SPEED_MULT: float = 0.5
 const MAX_SPEED_MULT: float = 2.0
-const ALTITUDE_SPEED: float = 150.0
+const ALTITUDE_SPEED: float = 800.0
 const MIN_ALTITUDE: float = 0.0
 const MAX_ALTITUDE: float = 4000.0
 var _target_altitude: float = 2000.0
 
-# Banking
+# Banking & pitch
 var _bank_angle: float = 0.0
+var _pitch_angle: float = 0.0
 const MAX_BANK_ANGLE: float = 0.5 # radians (~28 degrees)
+const MAX_PITCH_ANGLE: float = 0.4 # radians (~23 degrees)
 const BANK_LERP_SPEED: float = 6.0
 
 # Flares
@@ -323,16 +325,16 @@ func _physics_process(delta: float) -> void:
 	var forward := Vector3(sin(_heading), 0.0, -cos(_heading))
 	facing_direction = forward
 
-	# Altitude: Arrow Up = climb, Arrow Down = descend
+	# Altitude: Arrow Down = climb, Arrow Up = descend (inverted, like flight stick)
 	var alt_input: float = 0.0
-	if Input.is_key_pressed(KEY_UP):
-		alt_input += 1.0
 	if Input.is_key_pressed(KEY_DOWN):
+		alt_input += 1.0
+	if Input.is_key_pressed(KEY_UP):
 		alt_input -= 1.0
 	_target_altitude = clampf(_target_altitude + alt_input * ALTITUDE_SPEED * delta, MIN_ALTITUDE, MAX_ALTITUDE)
 
 	velocity = forward * _current_speed
-	velocity.y = (_target_altitude - global_position.y) * 5.0
+	velocity.y = (_target_altitude - global_position.y) * 10.0
 	move_and_slide()
 
 
@@ -363,8 +365,16 @@ func _update_visuals(delta: float) -> void:
 	# Banking based on turn speed
 	var target_bank: float = -(_turn_speed / MAX_TURN_RATE) * MAX_BANK_ANGLE
 	_bank_angle = lerp(_bank_angle, target_bank, BANK_LERP_SPEED * delta)
+
+	# Pitch based on vertical velocity (climb = nose up, dive = nose down)
+	var vert_speed: float = velocity.y if velocity else 0.0
+	var max_vert: float = ALTITUDE_SPEED * 10.0  # match velocity.y multiplier
+	var target_pitch: float = clampf(vert_speed / max_vert, -1.0, 1.0) * MAX_PITCH_ANGLE
+	_pitch_angle = lerp(_pitch_angle, target_pitch, BANK_LERP_SPEED * delta)
+
 	if _plane_body:
 		_plane_body.rotation.z = _bank_angle
+		_plane_body.rotation.x = _pitch_angle
 
 	# Shadow: stays on ground, grows and fades with altitude
 	if _shadow:
