@@ -47,7 +47,7 @@ const BANK_LERP_SPEED: float = 6.0
 # Flares
 var _flare_cooldown: float = 0.0
 const FLARE_COOLDOWN: float = 0.3
-var _alt_was_pressed: bool = false
+var _flare_key_was_pressed: bool = false
 
 # Visual
 var _body_color: Color = Color(0.2, 0.7, 1.0)
@@ -60,6 +60,10 @@ var _plane_body: Node3D
 var _glow_light: OmniLight3D
 var _shadow: MeshInstance3D
 var _body_mat: StandardMaterial3D
+var _afterburner_cores: Array[CPUParticles3D] = []
+var _afterburner_outers: Array[CPUParticles3D] = []
+var _afterburner_lights: Array[OmniLight3D] = []
+var _afterburner_intensity: float = 0.0
 
 # Child nodes
 var pickup_area: Area3D
@@ -175,6 +179,119 @@ func _setup_visuals() -> void:
 	_glow_light.position.y = 10.0
 	add_child(_glow_light)
 
+	# Afterburner flames — one per engine (twin engines)
+	# Jet is 15x scale, rotated 180° on Y. Engine nozzles offset in X.
+	var engine_positions: Array[Vector3] = [
+		Vector3(-12.0, 30.0, 6.0),  # left engine
+		Vector3(12.0, 30.0, 6.0),   # right engine
+	]
+
+	# Shared meshes/materials (reused by both engines)
+	var ab_mesh := CylinderMesh.new()
+	ab_mesh.top_radius = 0.5
+	ab_mesh.bottom_radius = 2.0
+	ab_mesh.height = 8.0
+	ab_mesh.radial_segments = 5
+	ab_mesh.rings = 1
+	var ab_mat := StandardMaterial3D.new()
+	ab_mat.albedo_color = Color(1.0, 0.85, 0.6, 0.95)
+	ab_mat.emission_enabled = true
+	ab_mat.emission = Color(0.8, 0.9, 1.0)
+	ab_mat.emission_energy_multiplier = 8.0
+	ab_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ab_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ab_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	ab_mesh.material = ab_mat
+
+	var outer_mesh := SphereMesh.new()
+	outer_mesh.radius = 2.5
+	outer_mesh.height = 5.0
+	outer_mesh.radial_segments = 5
+	outer_mesh.rings = 2
+	var outer_mat := StandardMaterial3D.new()
+	outer_mat.albedo_color = Color(1.0, 0.4, 0.05, 0.5)
+	outer_mat.emission_enabled = true
+	outer_mat.emission = Color(1.0, 0.3, 0.0)
+	outer_mat.emission_energy_multiplier = 4.0
+	outer_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	outer_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	outer_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	outer_mesh.material = outer_mat
+
+	# Shared gradients/curves
+	var core_scale_curve := Curve.new()
+	core_scale_curve.add_point(Vector2(0.0, 0.3))
+	core_scale_curve.add_point(Vector2(0.15, 1.0))
+	core_scale_curve.add_point(Vector2(1.0, 0.0))
+
+	var flame_grad := Gradient.new()
+	flame_grad.set_color(0, Color(0.9, 0.95, 1.0, 1.0))
+	flame_grad.add_point(0.2, Color(1.0, 0.9, 0.4, 0.95))
+	flame_grad.add_point(0.5, Color(1.0, 0.5, 0.1, 0.8))
+	flame_grad.add_point(0.8, Color(1.0, 0.2, 0.05, 0.4))
+	flame_grad.set_color(1, Color(0.4, 0.1, 0.05, 0.0))
+
+	var outer_grad := Gradient.new()
+	outer_grad.set_color(0, Color(1.0, 0.6, 0.1, 0.6))
+	outer_grad.add_point(0.4, Color(1.0, 0.3, 0.05, 0.3))
+	outer_grad.set_color(1, Color(0.3, 0.1, 0.0, 0.0))
+
+	for eng_pos in engine_positions:
+		# Inner core — tight, bright, white-blue
+		var core := CPUParticles3D.new()
+		core.amount = 40
+		core.lifetime = 0.25
+		core.one_shot = false
+		core.explosiveness = 0.0
+		core.direction = Vector3(0, -1, 0)
+		core.spread = 3.0
+		core.initial_velocity_min = 120.0
+		core.initial_velocity_max = 250.0
+		core.gravity = Vector3.ZERO
+		core.damping_min = 60.0
+		core.damping_max = 120.0
+		core.scale_amount_min = 2.0
+		core.scale_amount_max = 5.0
+		core.scale_amount_curve = core_scale_curve
+		core.mesh = ab_mesh
+		core.color_ramp = flame_grad
+		core.emitting = false
+		core.position = eng_pos
+		_plane_body.add_child(core)
+		_afterburner_cores.append(core)
+
+		# Outer glow — wider, softer, orange
+		var outer := CPUParticles3D.new()
+		outer.amount = 20
+		outer.lifetime = 0.35
+		outer.one_shot = false
+		outer.explosiveness = 0.0
+		outer.direction = Vector3(0, -1, 0)
+		outer.spread = 10.0
+		outer.initial_velocity_min = 60.0
+		outer.initial_velocity_max = 140.0
+		outer.gravity = Vector3.ZERO
+		outer.damping_min = 40.0
+		outer.damping_max = 100.0
+		outer.scale_amount_min = 4.0
+		outer.scale_amount_max = 10.0
+		outer.scale_amount_curve = Particles._create_fade_curve()
+		outer.mesh = outer_mesh
+		outer.color_ramp = outer_grad
+		outer.emitting = false
+		outer.position = eng_pos
+		_plane_body.add_child(outer)
+		_afterburner_outers.append(outer)
+
+		# Glow light per engine
+		var light := OmniLight3D.new()
+		light.light_color = Color(1.0, 0.5, 0.1)
+		light.light_energy = 0.0
+		light.omni_range = 60.0
+		light.position = eng_pos
+		_plane_body.add_child(light)
+		_afterburner_lights.append(light)
+
 func _apply_glow_to_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
 		node.material_override = _body_mat
@@ -221,12 +338,12 @@ func _physics_process(delta: float) -> void:
 
 	# Flare deployment (Alt key)
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
-	var alt_pressed: bool = Input.is_key_pressed(KEY_ALT)
-	if alt_pressed and not _alt_was_pressed and _flare_cooldown <= 0.0:
+	var f_pressed: bool = Input.is_key_pressed(KEY_F)
+	if f_pressed and not _flare_key_was_pressed and _flare_cooldown <= 0.0:
 		if not get_tree().get_nodes_in_group("enemy_projectile").is_empty():
 			_deploy_flare()
 			_flare_cooldown = FLARE_COOLDOWN
-	_alt_was_pressed = alt_pressed
+	_flare_key_was_pressed = f_pressed
 
 	# Invincibility
 	if _invincible:
@@ -263,6 +380,24 @@ func _update_visuals(delta: float) -> void:
 	var pulse: float = (sin(_pulse_time * 3.0) + 1.0) * 0.5
 	if _glow_light:
 		_glow_light.light_energy = 1.0 + pulse * 1.0
+
+	# Afterburner — ramp up when boosting, fade when not
+	var boosting: bool = _current_speed > move_speed * 1.1
+	var ab_target: float = 1.0 if boosting else 0.0
+	_afterburner_intensity = lerpf(_afterburner_intensity, ab_target, 6.0 * delta)
+	var ab_on: bool = _afterburner_intensity > 0.05
+	for core in _afterburner_cores:
+		core.emitting = ab_on
+		core.initial_velocity_min = 120.0 + _afterburner_intensity * 180.0
+		core.initial_velocity_max = 250.0 + _afterburner_intensity * 300.0
+		core.scale_amount_max = 5.0 + _afterburner_intensity * 8.0
+	for outer in _afterburner_outers:
+		outer.emitting = ab_on
+		outer.initial_velocity_min = 60.0 + _afterburner_intensity * 80.0
+		outer.initial_velocity_max = 140.0 + _afterburner_intensity * 160.0
+		outer.scale_amount_max = 10.0 + _afterburner_intensity * 8.0
+	for light in _afterburner_lights:
+		light.light_energy = _afterburner_intensity * 5.0
 
 func take_damage(amount: float) -> void:
 	if _invincible:

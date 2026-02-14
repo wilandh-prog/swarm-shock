@@ -398,16 +398,15 @@ func _draw_radar(ss: Vector2) -> void:
 	draw_line(Vector2(cx - RADAR_RADIUS, cy), Vector2(cx + RADAR_RADIUS, cy), HUD_GREEN_DIM, 0.5)
 	draw_line(Vector2(cx, cy - RADAR_RADIUS), Vector2(cx, cy + RADAR_RADIUS), HUD_GREEN_DIM, 0.5)
 
-	# Player heading line
-	var hdg: float = player._heading
-	var fwd_x: float = sin(hdg) * RADAR_RADIUS * 0.3
-	var fwd_y: float = -cos(hdg) * RADAR_RADIUS * 0.3
-	draw_line(Vector2(cx, cy), Vector2(cx + fwd_x, cy + fwd_y), HUD_GREEN, 1.5)
+	# Player heading indicator (always points up)
+	draw_line(Vector2(cx, cy), Vector2(cx, cy - RADAR_RADIUS * 0.3), HUD_GREEN, 1.5)
 
 	# Player dot
 	draw_circle(Vector2(cx, cy), 3.0, HUD_GREEN)
 
-	# Enemy blips
+	var hdg: float = player._heading
+
+	# Enemy blips (rotated by heading so forward = up)
 	var enemies := get_tree().get_nodes_in_group("enemy")
 	for enemy in enemies:
 		if not is_instance_valid(enemy):
@@ -416,10 +415,7 @@ func _draw_radar(ss: Vector2) -> void:
 		var dist: float = Vector2(rel.x, rel.z).length()
 		if dist > RADAR_RANGE:
 			continue
-		var radar_x: float = rel.x / RADAR_RANGE * RADAR_RADIUS
-		var radar_y: float = rel.z / RADAR_RANGE * RADAR_RADIUS
-		# Clamp to radar circle
-		var blip := Vector2(cx + radar_x, cy + radar_y)
+		var blip := _radar_blip(rel, hdg, cx, cy)
 		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
 			continue
 		draw_rect(Rect2(blip.x - 2, blip.y - 2, 4, 4), WARN_RED)
@@ -430,9 +426,7 @@ func _draw_radar(ss: Vector2) -> void:
 		if not is_instance_valid(m):
 			continue
 		var rel: Vector3 = m.global_position - player.global_position
-		var radar_x: float = rel.x / RADAR_RANGE * RADAR_RADIUS
-		var radar_y: float = rel.z / RADAR_RANGE * RADAR_RADIUS
-		var blip := Vector2(cx + radar_x, cy + radar_y)
+		var blip := _radar_blip(rel, hdg, cx, cy)
 		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
 			continue
 		# Flashing triangle for missiles
@@ -449,6 +443,14 @@ func _draw_radar(ss: Vector2) -> void:
 		draw_string(font, Vector2(cx - 10, cy - RADAR_RADIUS - 5), "RDR", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
 
 # --- Helpers ---
+
+func _radar_blip(rel: Vector3, hdg: float, cx: float, cy: float) -> Vector2:
+	# Rotate world-relative position by -heading so forward = up on radar
+	var s: float = sin(-hdg)
+	var c: float = cos(-hdg)
+	var rx: float = rel.x * c - rel.z * s
+	var ry: float = rel.x * s + rel.z * c
+	return Vector2(cx + rx / RADAR_RANGE * RADAR_RADIUS, cy + ry / RADAR_RANGE * RADAR_RADIUS)
 
 func _rot(p: Vector2, cx: float, cy: float, angle: float) -> Vector2:
 	var o := p - Vector2(cx, cy)
