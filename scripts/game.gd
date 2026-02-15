@@ -12,9 +12,9 @@ var camera: Camera3D
 # Wave spawning
 var _current_wave: int = 0
 var _wave_spawned: bool = false
-const WAVES: Array[int] = [5, 5]  # enemies per wave, total 10
-const SPAWN_DISTANCE_MIN: float = 1500.0
-const SPAWN_DISTANCE_MAX: float = 2500.0
+const WAVES: Array[int] = [4, 4]  # enemies per wave
+const SPAWN_DISTANCE_MIN: float = 5000.0
+const SPAWN_DISTANCE_MAX: float = 8000.0
 const WAVE_DELAY: float = 2.0  # seconds between waves
 var _wave_delay_timer: float = 0.0
 var _waiting_for_next_wave: bool = false
