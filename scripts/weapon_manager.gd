@@ -11,9 +11,11 @@ var missile_speed: float = 2400.0
 var missile_turn_rate: float = 4.0
 var missile_count: int = 1
 var _cooldown: float = 0.0
+var _missile_sound: AudioStreamPlayer
+var _fox2_sound: AudioStreamPlayer
 
 # Gun
-var gun_damage: float = 5.0
+var gun_damage: float = 15.0
 var gun_speed: float = 5000.0
 var gun_fire_rate: float = 0.08
 var gun_spread: float = 1.5  # degrees
@@ -31,6 +33,20 @@ const LOCK_DECAY: float = 1.0  # lose tracking in ~1s
 func _ready() -> void:
 	projectile_scene = load("res://scenes/entities/projectile.tscn")
 	player = get_parent() as CharacterBody3D
+	var launch_stream: AudioStream = load("res://assets/audio/Missile launch.mp3")
+	if launch_stream:
+		_missile_sound = AudioStreamPlayer.new()
+		_missile_sound.stream = launch_stream
+		_missile_sound.volume_db = -5.0
+		_missile_sound.bus = &"Master"
+		add_child(_missile_sound)
+	var fox2_stream: AudioStream = load("res://assets/audio/fox2.mp3")
+	if fox2_stream:
+		_fox2_sound = AudioStreamPlayer.new()
+		_fox2_sound.stream = fox2_stream
+		_fox2_sound.volume_db = -2.0
+		_fox2_sound.bus = &"Master"
+		add_child(_fox2_sound)
 
 func _process(delta: float) -> void:
 	if not player:
@@ -105,6 +121,10 @@ func _update_lock_on(delta: float) -> void:
 		lock_progress = 0.0
 
 func _fire_missiles() -> void:
+	if _missile_sound:
+		_missile_sound.play()
+	if _fox2_sound:
+		_fox2_sound.play()
 	var container: Node = _get_projectile_container()
 	if not container:
 		return

@@ -50,6 +50,9 @@ var _game_time: float = 0.0
 # Ambient particles
 var _ambient_particles: CPUParticles3D
 
+# Audio
+var _splash_sound: AudioStreamPlayer
+
 # Carrier
 var _carrier: Node3D
 
@@ -120,6 +123,15 @@ func _ready() -> void:
 
 	# HUD
 	hud.setup(player)
+
+	# Splash radio callout on enemy kill
+	var splash_stream: AudioStream = load("res://assets/audio/splash.mp3")
+	if splash_stream:
+		_splash_sound = AudioStreamPlayer.new()
+		_splash_sound.stream = splash_stream
+		_splash_sound.volume_db = -2.0
+		_splash_sound.bus = &"Master"
+		add_child(_splash_sound)
 
 	# Start run
 	GameManager.start_run()
@@ -272,10 +284,10 @@ func _spawn_wave(wave_index: int) -> void:
 
 # --- Enemy death ---
 
-func _on_enemy_died(pos: Vector3, xp_value: int) -> void:
-	_spawn_xp_gem(pos, xp_value)
-	if randf() < 0.12:
-		_spawn_volt_pickup(pos)
+func _on_enemy_died(pos: Vector3, _xp_value: int) -> void:
+	# Pickups disabled for now
+	if _splash_sound:
+		_splash_sound.play()
 	_try_chain_lightning(pos)
 
 func _spawn_xp_gem(pos: Vector3, value: int) -> void:

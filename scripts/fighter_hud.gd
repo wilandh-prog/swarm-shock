@@ -42,6 +42,7 @@ func _draw() -> void:
 	_draw_pitch_ladder(ss)
 	_draw_flight_path_marker(ss)
 	_draw_center_reticle(ss)
+	_draw_gun_aimpoint(ss)
 	_draw_lock_reticle(ss)
 	_draw_missile_warning(ss)
 	_draw_g_meter(ss)
@@ -264,6 +265,74 @@ func _draw_center_reticle(ss: Vector2) -> void:
 	draw_line(Vector2(cx + g, cy), Vector2(cx + s, cy), HUD_GREEN, 1.5)
 	draw_line(Vector2(cx, cy - s), Vector2(cx, cy - g), HUD_GREEN, 1.5)
 	draw_line(Vector2(cx, cy + g), Vector2(cx, cy + s), HUD_GREEN, 1.5)
+
+# --- Gun aimpoint (bullet impact point) ---
+
+func _draw_gun_aimpoint(ss: Vector2) -> void:
+	if not player or not player.weapon_manager:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if not cam:
+		return
+
+	var fwd := Vector3(sin(player._heading), 0.0, -cos(player._heading))
+	var bullet_speed: float = player.weapon_manager.gun_speed
+
+	# Find nearest enemy to determine range for the pipper
+	var target_dist: float = 1500.0  # default range if no enemy
+	var best_enemy: Node3D = null
+	var best_dist: float = 2500.0
+
+	for enemy in get_tree().get_nodes_in_group("enemy"):
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = player.global_position.distance_to(enemy.global_position)
+		if d < best_dist:
+			best_dist = d
+			best_enemy = enemy
+
+	if best_enemy:
+		target_dist = best_dist
+
+	# Bullet time of flight to that range
+	var tof: float = target_dist / bullet_speed
+
+	# Where the bullet will be: starts at player pos, moves in player forward dir
+	# at bullet_speed for tof seconds
+	var impact_pos: Vector3 = player.global_position + fwd * bullet_speed * tof
+
+	if cam.is_position_behind(impact_pos):
+		return
+
+	var pipper: Vector2 = cam.unproject_position(impact_pos)
+	pipper.x = clampf(pipper.x, 30.0, ss.x - 30.0)
+	pipper.y = clampf(pipper.y, 30.0, ss.y - 30.0)
+
+	# Draw bullet trail dots at multiple ranges
+	var trail_dists: Array[float] = [200.0, 400.0, 600.0, 900.0, 1200.0]
+	for td in trail_dists:
+		if td >= target_dist:
+			break
+		var trail_pos: Vector3 = player.global_position + fwd * td
+		if cam.is_position_behind(trail_pos):
+			continue
+		var tp: Vector2 = cam.unproject_position(trail_pos)
+		draw_circle(tp, 2.0, HUD_GREEN_DIM)
+
+	# Draw pipper — where bullets arrive at target range
+	var r: float = 14.0
+	draw_arc(pipper, r, 0, TAU, 32, HUD_GREEN, 2.0)
+	draw_circle(pipper, 3.0, HUD_GREEN)
+
+	# Ticks
+	for angle in [0.0, PI * 0.5, PI, PI * 1.5]:
+		var d := Vector2(cos(angle), sin(angle))
+		draw_line(pipper + d * r, pipper + d * (r + 6.0), HUD_GREEN, 1.5)
+
+	# Range label
+	var font := ThemeDB.fallback_font
+	if font:
+		draw_string(font, Vector2(pipper.x - 25, pipper.y + r + 16), "%dM" % int(target_dist), HORIZONTAL_ALIGNMENT_CENTER, 50, 11, HUD_GREEN_DIM)
 
 # --- Lock reticle (progressive circle) ---
 
