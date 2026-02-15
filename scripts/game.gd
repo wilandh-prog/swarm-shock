@@ -51,7 +51,7 @@ var _game_time: float = 0.0
 var _ambient_particles: CPUParticles3D
 
 # Carrier
-var _carrier: MeshInstance3D
+var _carrier: Node3D
 
 # Landing sequence
 enum GamePhase { COMBAT, LANDING_APPROACH, LANDED }
@@ -66,6 +66,8 @@ const LANDING_ZONE_RADIUS: float = 900.0  # carrier is ~2000 units long at scale
 const LANDING_ALT_THRESHOLD: float = 30.0  # must be close to deck level
 const LANDING_SPEED_FACTOR: float = 0.65  # must brake to 65% of cruise speed
 const LANDING_HEADING_TOL: float = 0.35  # ~20 degrees
+const LANDING_FAIL_DIST: float = 400.0   # must be aligned when this close
+const LANDING_FAIL_ALT: float = 80.0     # altitude window for fail check
 
 
 func _ready() -> void:
@@ -144,12 +146,18 @@ func _setup_carrier() -> void:
 	var carrier_mesh: Mesh = load("res://assets/carrier/essex_scb-125_generic.obj")
 	if not carrier_mesh:
 		return
-	_carrier = MeshInstance3D.new()
-	_carrier.mesh = carrier_mesh
-	# OBJ is ~4 units long; scale 500 = ~2000 unit carrier
-	_carrier.scale = Vector3(500.0, 500.0, 500.0)
+
+	# Node3D container — mesh and collision as separate children
+	_carrier = Node3D.new()
 	_carrier.position = Vector3(0, -9999, 0)  # hidden until landing
 	_carrier.visible = false
+
+	# Visual mesh (scaled 500x)
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.mesh = carrier_mesh
+	mesh_inst.scale = Vector3(500.0, 500.0, 500.0)
+	_carrier.add_child(mesh_inst)
+
 	add_child(_carrier)
 
 func _process(delta: float) -> void:
@@ -413,19 +421,18 @@ func _begin_landing_sequence() -> void:
 	_landing_offset_base = Vector2(player.global_position.x, player.global_position.z)
 	player.landing_mode = true
 
-	# Position carrier 8000 units ahead of player
+	# Position carrier 8000 units ahead
 	var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
 	var carrier_pos := player.global_position + forward * 8000.0
 	carrier_pos.y = _carrier_mesh_y
 	_carrier.global_position = carrier_pos
 	_carrier.visible = true
 
-	# Align carrier: bow same direction as player nose
-	# look_at aligns -Z with forward, then rotate -90° so X axis (model long axis) = forward
-	# Extra ~8° to align angled flight deck with approach path
+	# Align carrier: stern faces player (rotated 180°) so the angled deck
+	# approach comes from the aft end — one clear runway, no tower confusion
 	var look_target := _carrier.global_position + forward
 	_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
-	_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0))
+	_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0) + PI)
 	_carrier_heading = player._heading
 
 	print("=== LANDING SEQUENCE STARTED ===")
@@ -451,6 +458,14 @@ func _update_landing(_delta: float) -> void:
 
 	var to_carrier: Vector3 = _carrier.global_position - player.global_position
 	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
+
+	# Deck collision clamp: prevent player from descending below deck when near carrier
+	if dist_horiz < LANDING_ZONE_RADIUS:
+		var min_alt: float = _carrier_deck_y + 15.0  # just above deck visual
+		if player.global_position.y < min_alt:
+			player.global_position.y = min_alt
+			player._target_altitude = maxf(player._target_altitude, min_alt)
+
 	var alt_diff: float = player.global_position.y - _carrier_deck_y
 	var heading_diff: float = absf(fposmod(player._heading - _carrier_heading + PI, TAU) - PI)
 
@@ -461,7 +476,13 @@ func _update_landing(_delta: float) -> void:
 	var alt_ok := alt_diff < LANDING_ALT_THRESHOLD and alt_diff > -50.0
 	var hdg_ok := heading_diff < LANDING_HEADING_TOL
 
-	if dist_ok and alt_ok and hdg_ok and speed_ok:
+	# Lateral offset (same formula as HUD)
+	var runway_dir := Vector3(sin(_carrier_heading), 0.0, -cos(_carrier_heading))
+	var perp := Vector3(-runway_dir.z, 0.0, runway_dir.x)
+	var lateral: float = absf(to_carrier.dot(perp) - 150.0)  # 150 port offset
+	var lat_ok := lateral < 100.0
+
+	if dist_ok and alt_ok and hdg_ok and speed_ok and lat_ok:
 		_landing_timer += _delta
 		if _landing_timer > 0.5:
 			print(">>> LANDING SUCCESS! speed=%.0f (max=%.0f)" % [player._current_speed, landing_speed_max])
@@ -469,9 +490,29 @@ func _update_landing(_delta: float) -> void:
 	else:
 		_landing_timer = maxf(_landing_timer - _delta * 2.0, 0.0)
 
+		# Fail check: close to carrier at deck altitude but not aligned
+		if dist_horiz < LANDING_FAIL_DIST and alt_diff < LANDING_FAIL_ALT and alt_diff > -50.0:
+			if not speed_ok or not hdg_ok or not lat_ok:
+				_on_landing_failed()
+
+func _on_landing_failed() -> void:
+	_phase = GamePhase.LANDED  # stop further checks
+	player.set_physics_process(false)
+
+	EffectsManager.screen_flash(Color(1.0, 0.1, 0.1), 0.4)
+	EffectsManager.screen_shake(10.0, 0.3)
+
+	hud.stop_landing_guidance()
+	hud.show_landing_failed()
+
+	await get_tree().create_timer(2.5).timeout
+	GameManager.end_run()
+	get_tree().change_scene_to_file("res://scenes/game_over.tscn")
+
 func _on_landing_success() -> void:
 	_phase = GamePhase.LANDED
 	player._current_speed = 0.0
+	player.global_position.y = _carrier_deck_y + 15.0  # snap above deck so plane doesn't clip
 	player.set_physics_process(false)
 
 	EffectsManager.screen_flash(Color(0.3, 1.0, 0.5), 0.3)

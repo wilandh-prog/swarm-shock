@@ -16,7 +16,7 @@ var _smooth_g: float = 1.0
 
 # Landing guidance
 var landing_active: bool = false
-var landing_carrier: MeshInstance3D = null
+var landing_carrier: Node3D = null
 var landing_heading: float = 0.0
 var landing_deck_y: float = 70.0
 var _landing_debug_printed: bool = false
@@ -464,7 +464,7 @@ func _draw_radar(ss: Vector2) -> void:
 const HUD_YELLOW := Color(1.0, 0.8, 0.2, 0.9)
 const HUD_ORANGE := Color(1.0, 0.5, 0.2, 0.9)
 
-func start_landing(carrier: MeshInstance3D, heading: float, deck_y: float) -> void:
+func start_landing(carrier: Node3D, heading: float, deck_y: float) -> void:
 	landing_active = true
 	landing_carrier = carrier
 	landing_heading = heading
@@ -489,8 +489,8 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 
 	var commands: Array[Dictionary] = []
 
-	# --- Lateral lineup (always shown during approach) ---
-	var lateral: float = _lateral_offset(to_carrier)
+	# --- Lateral lineup (offset to port to avoid island/tower on starboard) ---
+	var lateral: float = _lateral_offset(to_carrier) - 150.0  # guide 150 units port of centerline
 	if absf(lateral) > 400.0:
 		var dir_txt: String = "RIGHT [D]" if lateral > 0 else "LEFT [A]"
 		commands.append({"text": "LINEUP %s" % dir_txt, "color": WARN_RED})

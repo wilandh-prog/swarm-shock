@@ -314,13 +314,36 @@ func _mark_upgrade_taken(id: String) -> void:
 
 # --- Landing guidance ---
 
-func start_landing_guidance(carrier: MeshInstance3D, heading: float, deck_y: float) -> void:
+func start_landing_guidance(carrier: Node3D, heading: float, deck_y: float) -> void:
 	if fighter_hud:
 		fighter_hud.start_landing(carrier, heading, deck_y)
 
 func stop_landing_guidance() -> void:
 	if fighter_hud:
 		fighter_hud.landing_active = false
+
+# --- Landing failed ---
+
+func show_landing_failed() -> void:
+	var fail_label := Label.new()
+	fail_label.text = "LANDING FAILED"
+	fail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	fail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	fail_label.set_anchors_preset(Control.PRESET_CENTER)
+	fail_label.add_theme_font_size_override("font_size", 72)
+	fail_label.add_theme_color_override("font_color", Color(1.0, 0.1, 0.1))
+	fail_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	fail_label.add_theme_constant_override("outline_size", 6)
+	fail_label.pivot_offset = Vector2(300, 40)
+	fail_label.position -= Vector2(300, 40)
+	add_child(fail_label)
+
+	# Animate: scale up with shake
+	fail_label.modulate.a = 0.0
+	fail_label.scale = Vector2(1.5, 1.5)
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(fail_label, "modulate:a", 1.0, 0.2)
+	tween.parallel().tween_property(fail_label, "scale", Vector2.ONE, 0.4)
 
 # --- Victory panel ---
 
