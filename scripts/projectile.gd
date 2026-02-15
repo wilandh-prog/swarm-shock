@@ -114,6 +114,43 @@ func _build_mesh() -> void:
 	flame.position.y = -25.0
 	_mesh_root.add_child(flame)
 
+	# Smoke trail
+	var trail := CPUParticles3D.new()
+	trail.amount = 30
+	trail.lifetime = 1.2
+	trail.explosiveness = 0.0
+	trail.randomness = 0.2
+	trail.direction = Vector3(0, -1, 0)
+	trail.spread = 8.0
+	trail.initial_velocity_min = 5.0
+	trail.initial_velocity_max = 15.0
+	trail.gravity = Vector3(0, 10, 0)
+	trail.damping_min = 2.0
+	trail.damping_max = 5.0
+	trail.scale_amount_min = 3.0
+	trail.scale_amount_max = 8.0
+	trail.scale_amount_curve = Particles._create_grow_fade_curve()
+	var trail_grad := Gradient.new()
+	trail_grad.set_color(0, Color(0.9, 0.9, 0.9, 0.6))
+	trail_grad.add_point(0.3, Color(0.7, 0.7, 0.7, 0.4))
+	trail_grad.add_point(0.7, Color(0.5, 0.5, 0.5, 0.15))
+	trail_grad.set_color(1, Color(0.4, 0.4, 0.4, 0.0))
+	trail.color_ramp = trail_grad
+	var trail_sphere := SphereMesh.new()
+	trail_sphere.radius = 1.0
+	trail_sphere.height = 2.0
+	trail_sphere.radial_segments = 4
+	trail_sphere.rings = 2
+	var trail_mat := StandardMaterial3D.new()
+	trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	trail_mat.vertex_color_use_as_albedo = true
+	trail_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	trail_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	trail_sphere.material = trail_mat
+	trail.mesh = trail_sphere
+	trail.position.y = -25.0  # emit from exhaust
+	_mesh_root.add_child(trail)
+
 	_update_mesh_orientation()
 	add_child(_mesh_root)
 

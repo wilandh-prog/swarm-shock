@@ -73,6 +73,11 @@ var _wing_pivot_right: Node3D
 var _wing_pivot_left: Node3D
 var _wing_sweep_angle: float = 0.0  # current sweep in radians
 
+# Audio
+var _jet_engine_player: AudioStreamPlayer
+var _lock_sound_player: AudioStreamPlayer
+var _lock_sound_playing: bool = false
+
 # Child nodes
 var pickup_area: Area3D
 var hurt_area: Area3D
@@ -87,6 +92,7 @@ func _ready() -> void:
 	_setup_hurt_area()
 	_setup_weapon_manager()
 	_setup_visuals()
+	_setup_audio()
 	_current_speed = move_speed
 
 func _apply_base_stats() -> void:
@@ -311,6 +317,28 @@ func _setup_visuals() -> void:
 		_plane_body.add_child(light)
 		_afterburner_lights.append(light)
 
+func _setup_audio() -> void:
+	# Jet engine — single player, OGG loops seamlessly
+	var jet_stream: AudioStreamOggVorbis = load("res://assets/audio/jet_engine.ogg")
+	if jet_stream:
+		jet_stream.loop = true
+		_jet_engine_player = AudioStreamPlayer.new()
+		_jet_engine_player.stream = jet_stream
+		_jet_engine_player.volume_db = -10.0
+		_jet_engine_player.bus = &"Master"
+		add_child(_jet_engine_player)
+		_jet_engine_player.play()
+
+	# Lock-on tone
+	var lock_stream: AudioStream = load("res://assets/audio/lock.mp3")
+	if lock_stream:
+		lock_stream.loop = true
+		_lock_sound_player = AudioStreamPlayer.new()
+		_lock_sound_player.stream = lock_stream
+		_lock_sound_player.volume_db = -5.0
+		_lock_sound_player.bus = &"Master"
+		add_child(_lock_sound_player)
+
 func _apply_glow_to_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
 		node.material_override = _body_mat
@@ -431,6 +459,21 @@ func _update_visuals(delta: float) -> void:
 		outer.scale_amount_max = 10.0 + _afterburner_intensity * 8.0
 	for light in _afterburner_lights:
 		light.light_energy = _afterburner_intensity * 5.0
+
+	# Jet engine audio: pitch follows speed
+	if _jet_engine_player:
+		var speed_ratio: float = _current_speed / move_speed
+		_jet_engine_player.pitch_scale = 0.7 + speed_ratio * 0.6
+
+	# Lock-on audio: play when weapon_manager has a locked target
+	if _lock_sound_player and weapon_manager:
+		var has_lock: bool = weapon_manager.locked_target != null and is_instance_valid(weapon_manager.locked_target)
+		if has_lock and not _lock_sound_playing:
+			_lock_sound_player.play()
+			_lock_sound_playing = true
+		elif not has_lock and _lock_sound_playing:
+			_lock_sound_player.stop()
+			_lock_sound_playing = false
 
 	# F-14 wing sweep: forward at slow speed, swept back at high speed
 	if _wing_pivot_right and _wing_pivot_left:
