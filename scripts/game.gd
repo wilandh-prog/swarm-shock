@@ -143,8 +143,8 @@ func _setup_background() -> void:
 	add_child(_ground)
 
 func _setup_carrier() -> void:
-	var carrier_mesh: Mesh = load("res://assets/carrier/essex_scb-125_generic.obj")
-	if not carrier_mesh:
+	var carrier_scene: PackedScene = load("res://assets/carrier/essex_scb-125_generic.glb")
+	if not carrier_scene:
 		return
 
 	# Node3D container — mesh and collision as separate children
@@ -152,11 +152,10 @@ func _setup_carrier() -> void:
 	_carrier.position = Vector3(0, -9999, 0)  # hidden until landing
 	_carrier.visible = false
 
-	# Visual mesh (scaled 500x)
-	var mesh_inst := MeshInstance3D.new()
-	mesh_inst.mesh = carrier_mesh
-	mesh_inst.scale = Vector3(500.0, 500.0, 500.0)
-	_carrier.add_child(mesh_inst)
+	# Visual model (scaled 500x)
+	var carrier_model: Node3D = carrier_scene.instantiate()
+	carrier_model.scale = Vector3(500.0, 500.0, 500.0)
+	_carrier.add_child(carrier_model)
 
 	add_child(_carrier)
 
