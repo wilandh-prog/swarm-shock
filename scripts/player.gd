@@ -68,6 +68,11 @@ var _afterburner_outers: Array[CPUParticles3D] = []
 var _afterburner_lights: Array[OmniLight3D] = []
 var _afterburner_intensity: float = 0.0
 
+# F-14 variable-sweep wings
+var _wing_pivot_right: Node3D
+var _wing_pivot_left: Node3D
+var _wing_sweep_angle: float = 0.0  # current sweep in radians
+
 # Child nodes
 var pickup_area: Area3D
 var hurt_area: Area3D
@@ -167,6 +172,9 @@ func _setup_visuals() -> void:
 		jet_instance.position.y = 30.0
 		jet_instance.rotation.y = deg_to_rad(180.0)
 	_plane_body.add_child(jet_instance)
+
+	if f14_model:
+		_setup_wing_sweep(jet_instance)
 
 	# Blob shadow on ground
 	_shadow = MeshInstance3D.new()
@@ -424,6 +432,16 @@ func _update_visuals(delta: float) -> void:
 	for light in _afterburner_lights:
 		light.light_energy = _afterburner_intensity * 5.0
 
+	# F-14 wing sweep: forward at slow speed, swept back at high speed
+	if _wing_pivot_right and _wing_pivot_left:
+		# 0.0 at min speed → 1.0 at max speed
+		var sweep_t: float = clampf((_current_speed - move_speed * MIN_SPEED_MULT) / (move_speed * MAX_SPEED_MULT - move_speed * MIN_SPEED_MULT), 0.0, 1.0)
+		var target_sweep: float = deg_to_rad(MAX_SWEEP_DEG) * sweep_t
+		_wing_sweep_angle = lerpf(_wing_sweep_angle, target_sweep, 2.0 * delta)
+		# Rotate around Z in model space (right wing: negative = sweep back, left: positive)
+		_wing_pivot_right.rotation.z = -_wing_sweep_angle
+		_wing_pivot_left.rotation.z = _wing_sweep_angle
+
 func take_damage(amount: float) -> void:
 	if _invincible:
 		return
@@ -486,3 +504,48 @@ func get_nearest_enemy() -> Node3D:
 			nearest_dist = dist
 			nearest = enemy
 	return nearest
+
+# --- F-14 variable-sweep wings ---
+
+const RIGHT_WING_PARTS: Array[String] = ["Part165", "Part166", "Part168", "Part169", "Part170", "Part171", "Part172"]
+const LEFT_WING_PARTS: Array[String] = ["Part174", "Part176", "Part177", "Part178", "Part179", "Part180", "Part181"]
+# Hinge point in model space (X=side, Y=length, Z=height)
+const WING_HINGE_X: float = 2.3
+const WING_HINGE_Y: float = -1.5
+const WING_HINGE_Z: float = 0.5
+const MAX_SWEEP_DEG: float = 50.0  # additional sweep angle at max speed
+
+func _setup_wing_sweep(model: Node3D) -> void:
+	# Create pivot nodes at wing hinge points (model space)
+	_wing_pivot_right = Node3D.new()
+	_wing_pivot_right.position = Vector3(WING_HINGE_X, WING_HINGE_Y, WING_HINGE_Z)
+	model.add_child(_wing_pivot_right)
+
+	_wing_pivot_left = Node3D.new()
+	_wing_pivot_left.position = Vector3(-WING_HINGE_X, WING_HINGE_Y, WING_HINGE_Z)
+	model.add_child(_wing_pivot_left)
+
+	# Reparent wing meshes to pivot nodes
+	for part_name in RIGHT_WING_PARTS:
+		_reparent_to_pivot(model, part_name, _wing_pivot_right)
+	for part_name in LEFT_WING_PARTS:
+		_reparent_to_pivot(model, part_name, _wing_pivot_left)
+
+func _reparent_to_pivot(model: Node3D, part_name: String, pivot: Node3D) -> void:
+	var node := _find_node_recursive(model, part_name)
+	if not node:
+		return
+	var old_pos: Vector3 = node.position
+	node.get_parent().remove_child(node)
+	pivot.add_child(node)
+	# Offset position so vertices stay in the same place
+	node.position = old_pos - pivot.position
+
+func _find_node_recursive(root: Node, node_name: String) -> Node:
+	if root.name == node_name:
+		return root
+	for child in root.get_children():
+		var found := _find_node_recursive(child, node_name)
+		if found:
+			return found
+	return null
