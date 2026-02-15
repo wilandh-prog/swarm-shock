@@ -160,6 +160,9 @@ func _setup_visuals() -> void:
 	_shadow.position.y = 1.0
 	add_child(_shadow)
 
+static var _mig_scene: PackedScene
+static var _mig_scene_checked: bool = false
+
 func _load_model() -> void:
 	if _model_instance and is_instance_valid(_model_instance):
 		_model_instance.queue_free()
@@ -168,6 +171,27 @@ func _load_model() -> void:
 	var config: Dictionary = TYPE_CONFIG[enemy_type]
 	var model_scale: float = config["scale"]
 
+	# Try MiG E-8 GLB first (cached static)
+	if not _mig_scene_checked:
+		_mig_scene_checked = true
+		_mig_scene = load("res://assets/mig-e8/mig-e8.glb")
+
+	if _mig_scene:
+		_model_instance = _mig_scene.instantiate()
+		# Model: X=wingspan(±3.6), Y=height(0.3-3.7), Z=length(±8.2)
+		# Scale factor: procedural was ~4 units at scale 30 = 120 game units
+		# MiG E-8 is ~16 units long, so scale ~7.5 for equivalent size
+		var glb_scale: float = model_scale * 0.25
+		_model_instance.scale = Vector3(glb_scale, glb_scale, glb_scale)
+		_model_instance.rotation.y = deg_to_rad(180.0)  # nose toward -Z (forward)
+		_model_instance.position.y = 20.0
+		_plane_body.add_child(_model_instance)
+		return
+
+	# Fallback: procedural MiG-21 silhouette
+	_load_procedural_model(config, model_scale)
+
+func _load_procedural_model(config: Dictionary, model_scale: float) -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = _base_color
 	mat.emission_enabled = true
@@ -175,12 +199,8 @@ func _load_model() -> void:
 	mat.emission_energy_multiplier = 0.5
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
-	# --- Chunky MiG-21 silhouette from procedural meshes ---
-	# Local Y = forward (nose at +Y, tail at -Y)
-	# Local X = wingspan, local Z = vertical thickness
 	_model_instance = Node3D.new()
 
-	# Fuselage — fat rounded body
 	var fuselage := MeshInstance3D.new()
 	var fuse_mesh := CylinderMesh.new()
 	fuse_mesh.top_radius = 0.32
@@ -191,7 +211,6 @@ func _load_model() -> void:
 	fuselage.mesh = fuse_mesh
 	_model_instance.add_child(fuselage)
 
-	# Nose — rounded, not needle-sharp
 	var nose := MeshInstance3D.new()
 	var nose_mesh := CylinderMesh.new()
 	nose_mesh.top_radius = 0.08
@@ -203,7 +222,6 @@ func _load_model() -> void:
 	nose.position.y = 2.2
 	_model_instance.add_child(nose)
 
-	# Cockpit bump — small dome on top
 	var cockpit := MeshInstance3D.new()
 	var cock_mesh := SphereMesh.new()
 	cock_mesh.radius = 0.22
@@ -222,7 +240,6 @@ func _load_model() -> void:
 	cockpit.position.z = 0.3
 	_model_instance.add_child(cockpit)
 
-	# Delta wings — wide and chunky
 	var wings := MeshInstance3D.new()
 	var wing_mesh := PrismMesh.new()
 	wing_mesh.size = Vector3(4.0, 2.4, 0.12)
@@ -231,7 +248,6 @@ func _load_model() -> void:
 	wings.position.y = -0.1
 	_model_instance.add_child(wings)
 
-	# Vertical tail fin — standing up
 	var tail_fin := MeshInstance3D.new()
 	var tfin_mesh := PrismMesh.new()
 	tfin_mesh.size = Vector3(0.1, 1.0, 0.8)
@@ -242,7 +258,6 @@ func _load_model() -> void:
 	tail_fin.rotation.x = deg_to_rad(90.0)
 	_model_instance.add_child(tail_fin)
 
-	# Horizontal tailplanes — small rear wings
 	var htail := MeshInstance3D.new()
 	var htail_mesh := PrismMesh.new()
 	htail_mesh.size = Vector3(1.6, 0.9, 0.08)
@@ -251,7 +266,6 @@ func _load_model() -> void:
 	htail.position.y = -1.3
 	_model_instance.add_child(htail)
 
-	# Engine exhaust glow
 	var exhaust := MeshInstance3D.new()
 	var exh_mesh := CylinderMesh.new()
 	exh_mesh.top_radius = 0.3
@@ -269,7 +283,7 @@ func _load_model() -> void:
 	exhaust.position.y = -1.8
 	_model_instance.add_child(exhaust)
 
-	_model_instance.rotation.x = deg_to_rad(-90.0)  # lay flat, nose (+Y) → forward (-Z)
+	_model_instance.rotation.x = deg_to_rad(-90.0)
 	_model_instance.scale = Vector3.ONE * model_scale
 	_model_instance.position.y = 20.0
 	_plane_body.add_child(_model_instance)
