@@ -18,7 +18,7 @@ var _smooth_g: float = 1.0
 var landing_active: bool = false
 var landing_carrier: MeshInstance3D = null
 var landing_heading: float = 0.0
-var landing_deck_y: float = 150.0
+var landing_deck_y: float = 70.0
 var _landing_debug_printed: bool = false
 
 func _process(delta: float) -> void:
@@ -47,6 +47,7 @@ func _draw() -> void:
 	_draw_g_meter(ss)
 	_draw_flare_status(ss)
 	_draw_radar(ss)
+	_draw_speed_lines(ss)
 	if landing_active:
 		_draw_landing_guidance(ss)
 
@@ -488,54 +489,56 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 
 	var commands: Array[Dictionary] = []
 
-	# Heading correction
-	if absf(heading_diff) > 0.1:
-		if heading_diff > 0:
-			commands.append({"text": "TURN LEFT  [A]", "color": HUD_GREEN})
-		else:
-			commands.append({"text": "TURN RIGHT [D]", "color": HUD_GREEN})
+	# --- Lateral lineup (always shown during approach) ---
+	var lateral: float = _lateral_offset(to_carrier)
+	if absf(lateral) > 400.0:
+		var dir_txt: String = "RIGHT [D]" if lateral > 0 else "LEFT [A]"
+		commands.append({"text": "LINEUP %s" % dir_txt, "color": WARN_RED})
+	elif absf(lateral) > 100.0:
+		var dir_txt: String = "RIGHT [D]" if lateral > 0 else "LEFT [A]"
+		commands.append({"text": "CORRECT %s" % dir_txt, "color": HUD_ORANGE})
+	elif absf(lateral) > 30.0:
+		var dir_txt: String = "NUDGE RIGHT [D]" if lateral > 0 else "NUDGE LEFT [A]"
+		commands.append({"text": dir_txt, "color": HUD_YELLOW})
 	else:
-		commands.append({"text": "ON COURSE", "color": HUD_GREEN})
+		commands.append({"text": "ON CENTERLINE", "color": HUD_GREEN})
 
-	# Speed — thresholds relative to cruise speed
+	# --- Heading ---
+	if absf(heading_diff) > 0.1:
+		var dir_txt: String = "LEFT [A]" if heading_diff > 0 else "RIGHT [D]"
+		commands.append({"text": "HEADING %s" % dir_txt, "color": HUD_ORANGE})
+	else:
+		commands.append({"text": "HDG OK", "color": HUD_GREEN})
+
+	# --- Speed ---
 	var knots: int = int(player._current_speed * 2.5)
 	var cruise: float = player.move_speed
-	var landing_max: float = cruise * 0.35
+	var landing_max: float = cruise * 0.65
 	if player._current_speed >= cruise * 0.7:
 		commands.append({"text": "BRAKE! [S] %dKT" % knots, "color": WARN_RED})
 	elif player._current_speed >= landing_max:
-		commands.append({"text": "SLOW DOWN [S] %dKT" % knots, "color": HUD_ORANGE})
+		commands.append({"text": "SLOW [S] %dKT" % knots, "color": HUD_ORANGE})
 	else:
-		commands.append({"text": "SPEED OK %dKT" % knots, "color": HUD_GREEN})
+		commands.append({"text": "SPD OK %dKT" % knots, "color": HUD_GREEN})
 
-	# Altitude (glide slope based on distance)
-	if dist_horiz < 6000.0:
-		var ideal_alt: float = landing_deck_y + dist_horiz * 0.08
-		ideal_alt = maxf(ideal_alt, landing_deck_y + 50.0)
-		var alt_error: float = player.global_position.y - ideal_alt
-
-		if alt_error > 300.0:
-			commands.append({"text": "DESCEND", "color": HUD_ORANGE})
-		elif alt_error > 80.0:
-			commands.append({"text": "DESCEND SLOWLY", "color": HUD_YELLOW})
-		elif alt_error < -150.0:
-			commands.append({"text": "PULL UP!", "color": WARN_RED})
-		elif alt_error < -30.0:
-			commands.append({"text": "CLIMB SLIGHTLY", "color": HUD_YELLOW})
-		else:
-			commands.append({"text": "ON GLIDESLOPE", "color": HUD_GREEN})
-
-	# Final approach: lateral correction
-	if dist_horiz < 1500.0:
-		var lateral: float = _lateral_offset(to_carrier)
-		if absf(lateral) > 200.0:
-			if lateral > 0:
-				commands.append({"text": "CORRECT RIGHT", "color": HUD_YELLOW})
-			else:
-				commands.append({"text": "CORRECT LEFT", "color": HUD_YELLOW})
+	# --- Altitude / glideslope ---
+	# Steeper gradient (0.25) so player descends to deck level over the approach
+	var ideal_alt: float = landing_deck_y + dist_horiz * 0.25
+	ideal_alt = maxf(ideal_alt, landing_deck_y + 10.0)
+	var alt_error: float = player.global_position.y - ideal_alt
+	if alt_error > 200.0:
+		commands.append({"text": "DESCEND [UP]", "color": WARN_RED})
+	elif alt_error > 50.0:
+		commands.append({"text": "DESCEND [UP]", "color": HUD_ORANGE})
+	elif alt_error < -100.0:
+		commands.append({"text": "PULL UP! [DOWN]", "color": WARN_RED})
+	elif alt_error < -20.0:
+		commands.append({"text": "CLIMB [DOWN]", "color": HUD_YELLOW})
+	else:
+		commands.append({"text": "GLIDE OK", "color": HUD_GREEN})
 
 	# Distance readout
-	commands.append({"text": "DIST: %dM" % int(dist_horiz), "color": HUD_GREEN_DIM})
+	commands.append({"text": "DIST %dM" % int(dist_horiz), "color": HUD_GREEN_DIM})
 
 	# Banner
 	var banner: String = "FINAL APPROACH" if dist_horiz < 1500.0 else "CARRIER APPROACH"
@@ -557,6 +560,61 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 		var y_pos: float = y_start + 14 + i * 24
 		draw_string(font, Vector2(cx - 90, y_pos), cmd["text"], HORIZONTAL_ALIGNMENT_CENTER, 180, 16, cmd["color"])
 
+	# --- ILS diamond indicator (right side of screen) ---
+	var ils_cx: float = ss.x - 200.0
+	var ils_cy: float = ss.y * 0.5
+	var ils_size: float = 80.0
+
+	# Crosshair frame
+	draw_line(Vector2(ils_cx - ils_size, ils_cy), Vector2(ils_cx + ils_size, ils_cy), HUD_GREEN_DIM, 1.0)
+	draw_line(Vector2(ils_cx, ils_cy - ils_size), Vector2(ils_cx, ils_cy + ils_size), HUD_GREEN_DIM, 1.0)
+	draw_rect(Rect2(ils_cx - ils_size, ils_cy - ils_size, ils_size * 2, ils_size * 2), HUD_GREEN_DIM, false, 1.0)
+
+	# Lateral offset → horizontal diamond (clamped to box)
+	var lat_norm: float = clampf(lateral / 500.0, -1.0, 1.0)
+	var lat_x: float = ils_cx + lat_norm * ils_size
+	_draw_diamond(Vector2(lat_x, ils_cy), 6.0, HUD_GREEN if absf(lat_norm) < 0.15 else HUD_ORANGE)
+
+	# Glideslope offset → vertical diamond
+	var gs_norm: float = clampf(alt_error / 300.0, -1.0, 1.0)
+	var gs_y: float = ils_cy + gs_norm * ils_size  # positive = too high = diamond goes down... inverted
+	_draw_diamond(Vector2(ils_cx, ils_cy - gs_norm * ils_size), 6.0, HUD_GREEN if absf(gs_norm) < 0.2 else HUD_ORANGE)
+
+	# Labels
+	draw_string(font, Vector2(ils_cx - 10, ils_cy - ils_size - 8), "ILS", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
+	draw_string(font, Vector2(ils_cx - ils_size - 5, ils_cy + ils_size + 14), "L", HORIZONTAL_ALIGNMENT_CENTER, 10, 11, HUD_GREEN_DIM)
+	draw_string(font, Vector2(ils_cx + ils_size - 3, ils_cy + ils_size + 14), "R", HORIZONTAL_ALIGNMENT_CENTER, 10, 11, HUD_GREEN_DIM)
+
+# --- Speed lines (radial streaks for speed sensation) ---
+
+func _draw_speed_lines(ss: Vector2) -> void:
+	if not player:
+		return
+	var speed_frac: float = _smooth_speed / (player.move_speed * player.MAX_SPEED_MULT)
+	if speed_frac < 0.25:
+		return
+	var alpha: float = (speed_frac - 0.25) * 0.7
+	var cx: float = ss.x * 0.5
+	var cy: float = ss.y * 0.42
+	var t: float = Time.get_ticks_msec() * 0.001
+	var line_count: int = 28
+	for i in line_count:
+		var base_angle: float = float(i) / float(line_count) * TAU
+		# Stagger: each line pulses at different phase
+		var phase: float = sin(base_angle * 3.0 + t * 4.0) * 0.5 + 0.5
+		var inner: float = 100.0 + phase * 60.0
+		var outer: float = inner + speed_frac * 200.0
+		var dir := Vector2(cos(base_angle), sin(base_angle))
+		var a: float = alpha * phase * 0.6
+		if a < 0.02:
+			continue
+		draw_line(
+			Vector2(cx, cy) + dir * inner,
+			Vector2(cx, cy) + dir * outer,
+			Color(0.8, 1.0, 0.9, a),
+			1.5
+		)
+
 func _lateral_offset(to_carrier: Vector3) -> float:
 	var runway_dir := Vector3(sin(landing_heading), 0.0, -cos(landing_heading))
 	var perp := Vector3(-runway_dir.z, 0.0, runway_dir.x)
@@ -577,6 +635,15 @@ func _rot(p: Vector2, cx: float, cy: float, angle: float) -> Vector2:
 	var c: float = cos(angle)
 	var s: float = sin(angle)
 	return Vector2(cx + o.x * c - o.y * s, cy + o.x * s + o.y * c)
+
+func _draw_diamond(center: Vector2, size: float, color: Color) -> void:
+	var pts: PackedVector2Array = [
+		center + Vector2(0, -size),
+		center + Vector2(size, 0),
+		center + Vector2(0, size),
+		center + Vector2(-size, 0),
+	]
+	draw_colored_polygon(pts, color)
 
 func _dashed(from: Vector2, to: Vector2, color: Color, width: float, dash: float) -> void:
 	var length: float = from.distance_to(to)

@@ -32,12 +32,13 @@ const MAX_TURN_RATE: float = 2.2
 const TURN_ACCEL: float = 5.0
 const TURN_DECEL: float = 4.0
 const SPEED_ACCEL: float = 200.0
-const MIN_SPEED_MULT: float = 0.15
+const MIN_SPEED_MULT: float = 0.5
 const MAX_SPEED_MULT: float = 2.0
 const ALTITUDE_SPEED: float = 800.0
 const MIN_ALTITUDE: float = 0.0
 const MAX_ALTITUDE: float = 4000.0
 var _target_altitude: float = 2000.0
+var landing_mode: bool = false
 
 # Banking & pitch
 var _bank_angle: float = 0.0
@@ -319,6 +320,8 @@ func _physics_process(delta: float) -> void:
 		target_speed = move_speed * MAX_SPEED_MULT
 	elif speed_input < -0.1:
 		target_speed = move_speed * MIN_SPEED_MULT
+	elif landing_mode:
+		target_speed = _current_speed  # Throttle hold: no input = keep speed
 	_current_speed = move_toward(_current_speed, target_speed, SPEED_ACCEL * delta)
 
 	# Forward direction from heading
@@ -334,6 +337,10 @@ func _physics_process(delta: float) -> void:
 	_target_altitude = clampf(_target_altitude + alt_input * ALTITUDE_SPEED * delta, MIN_ALTITUDE, MAX_ALTITUDE)
 
 	velocity = forward * _current_speed
+	# Landing mode: A/D also gives lateral drift for lineup corrections
+	if landing_mode and absf(turn_input) > 0.1:
+		var right := Vector3(cos(_heading), 0.0, sin(_heading))
+		velocity += right * turn_input * _current_speed * 0.4
 	velocity.y = (_target_altitude - global_position.y) * 10.0
 	move_and_slide()
 

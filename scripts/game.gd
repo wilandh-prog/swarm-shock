@@ -57,11 +57,14 @@ var _carrier: MeshInstance3D
 enum GamePhase { COMBAT, LANDING_APPROACH, LANDED }
 var _phase: GamePhase = GamePhase.COMBAT
 var _carrier_heading: float = 0.0
-var _carrier_deck_y: float = 150.0
+var _carrier_mesh_y: float = 150.0   # carrier mesh origin
+var _carrier_deck_y: float = 70.0    # just above visual deck (deck at ~53)
 var _landing_timer: float = 0.0
-const LANDING_ZONE_RADIUS: float = 400.0
-const LANDING_ALT_THRESHOLD: float = 120.0
-const LANDING_SPEED_FACTOR: float = 0.35  # must brake to 35% of cruise speed
+var _scroll_blend: float = 1.0          # 1.0 = fast arcade scroll, 0.0 = world-correct
+var _landing_offset_base: Vector2       # player pos when landing started
+const LANDING_ZONE_RADIUS: float = 900.0  # carrier is ~2000 units long at scale 500
+const LANDING_ALT_THRESHOLD: float = 30.0  # must be close to deck level
+const LANDING_SPEED_FACTOR: float = 0.65  # must brake to 65% of cruise speed
 const LANDING_HEADING_TOL: float = 0.35  # ~20 degrees
 
 
@@ -166,12 +169,23 @@ func _process(delta: float) -> void:
 		camera.global_position = camera.global_position.lerp(target_pos, CAM_LERP * delta)
 	camera.look_at(player.global_position + player.facing_direction * 200.0, Vector3.UP)
 
+	# Dynamic FOV: wider at high speed, narrower when slow
+	var speed_ratio: float = player._current_speed / player.move_speed
+	var target_fov: float = 60.0 + speed_ratio * 25.0  # 60° slow, 85° at cruise, 110° at boost
+	camera.fov = lerpf(camera.fov, target_fov, delta * 3.0)
+
 	# Background follows player so terrain never ends
 	if _ground:
 		_ground.global_position.x = player.global_position.x
 		_ground.global_position.z = player.global_position.z
 	if _bg_shader_mat:
-		_bg_shader_mat.set_shader_parameter("offset", Vector2(player.global_position.x, player.global_position.z))
+		var pp := Vector2(player.global_position.x, player.global_position.z)
+		if _phase == GamePhase.LANDING_APPROACH or _phase == GamePhase.LANDED:
+			# Smoothly transition ocean scroll from fast arcade to world-correct
+			_scroll_blend = lerpf(_scroll_blend, 0.3, delta * 0.8)
+			var factor := _scroll_blend * 0.97 + 0.03
+			pp = _landing_offset_base + (pp - _landing_offset_base) * factor
+		_bg_shader_mat.set_shader_parameter("offset", pp)
 		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
 
 	# Wave spawning
@@ -395,11 +409,14 @@ func _attract_nearby_pickups() -> void:
 func _begin_landing_sequence() -> void:
 	_phase = GamePhase.LANDING_APPROACH
 	_landing_timer = 0.0
+	_scroll_blend = 1.0
+	_landing_offset_base = Vector2(player.global_position.x, player.global_position.z)
+	player.landing_mode = true
 
 	# Position carrier 8000 units ahead of player
 	var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
 	var carrier_pos := player.global_position + forward * 8000.0
-	carrier_pos.y = _carrier_deck_y
+	carrier_pos.y = _carrier_mesh_y
 	_carrier.global_position = carrier_pos
 	_carrier.visible = true
 
@@ -407,7 +424,7 @@ func _begin_landing_sequence() -> void:
 	# look_at aligns -Z with forward, then rotate -90° so X axis (model long axis) = forward
 	# Extra ~8° to align angled flight deck with approach path
 	var look_target := _carrier.global_position + forward
-	_carrier.look_at(Vector3(look_target.x, _carrier_deck_y, look_target.z), Vector3.UP)
+	_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
 	_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0))
 	_carrier_heading = player._heading
 
@@ -424,6 +441,13 @@ func _begin_landing_sequence() -> void:
 func _update_landing(_delta: float) -> void:
 	if not is_instance_valid(player) or not is_instance_valid(_carrier):
 		return
+
+	# Move carrier toward player for speed sensation
+	var approach_dir := (player.global_position - _carrier.global_position)
+	approach_dir.y = 0.0
+	if approach_dir.length() > 100.0:
+		approach_dir = approach_dir.normalized()
+		_carrier.global_position += approach_dir * player._current_speed * 0.4 * _delta
 
 	var to_carrier: Vector3 = _carrier.global_position - player.global_position
 	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
