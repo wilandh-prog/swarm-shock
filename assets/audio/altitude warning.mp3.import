@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bqb1xthcsqkbq"
+path="res://.godot/imported/altitude warning.mp3-92710809052a6cc778ddfbec536b3c2b.mp3str"
+
+[deps]
+
+source_file="res://assets/audio/altitude warning.mp3"
+dest_files=["res://.godot/imported/altitude warning.mp3-92710809052a6cc778ddfbec536b3c2b.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

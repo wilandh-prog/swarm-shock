@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b5xxp4an8thsj"
+path="res://.godot/imported/sidewinder allmost lock.mp3-4019274d6d4f8a750ff6b43837a518bf.mp3str"
+
+[deps]
+
+source_file="res://assets/audio/sidewinder allmost lock.mp3"
+dest_files=["res://.godot/imported/sidewinder allmost lock.mp3-4019274d6d4f8a750ff6b43837a518bf.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

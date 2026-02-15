@@ -77,6 +77,14 @@ var _wing_sweep_angle: float = 0.0  # current sweep in radians
 var _jet_engine_player: AudioStreamPlayer
 var _lock_sound_player: AudioStreamPlayer
 var _lock_sound_playing: bool = false
+var _tracking_sound_player: AudioStreamPlayer
+var _tracking_sound_playing: bool = false
+var _incoming_sound_player: AudioStreamPlayer
+var _incoming_sound_playing: bool = false
+var _flare_sound_player: AudioStreamPlayer
+var _altitude_sound_player: AudioStreamPlayer
+var _altitude_warning_active: bool = false
+const ALTITUDE_WARNING_THRESHOLD: float = 50.0
 
 # Child nodes
 var pickup_area: Area3D
@@ -329,15 +337,53 @@ func _setup_audio() -> void:
 		add_child(_jet_engine_player)
 		_jet_engine_player.play()
 
-	# Lock-on tone
+	# Lock-on tone (full lock) — one-shot
 	var lock_stream: AudioStream = load("res://assets/audio/lock.mp3")
 	if lock_stream:
-		lock_stream.loop = true
 		_lock_sound_player = AudioStreamPlayer.new()
 		_lock_sound_player.stream = lock_stream
 		_lock_sound_player.volume_db = -5.0
 		_lock_sound_player.bus = &"Master"
 		add_child(_lock_sound_player)
+
+	# Sidewinder tracking tone (acquiring lock)
+	var tracking_stream: AudioStream = load("res://assets/audio/sidewinder allmost lock.mp3")
+	if tracking_stream:
+		tracking_stream.loop = true
+		_tracking_sound_player = AudioStreamPlayer.new()
+		_tracking_sound_player.stream = tracking_stream
+		_tracking_sound_player.volume_db = -5.0
+		_tracking_sound_player.bus = &"Master"
+		add_child(_tracking_sound_player)
+
+	# Incoming missile warning
+	var incoming_stream: AudioStream = load("res://assets/audio/incoming missile.mp3")
+	if incoming_stream:
+		incoming_stream.loop = true
+		_incoming_sound_player = AudioStreamPlayer.new()
+		_incoming_sound_player.stream = incoming_stream
+		_incoming_sound_player.volume_db = -3.0
+		_incoming_sound_player.bus = &"Master"
+		add_child(_incoming_sound_player)
+
+	# Flare deploy sound
+	var flare_stream: AudioStream = load("res://assets/audio/flare.mp3")
+	if flare_stream:
+		_flare_sound_player = AudioStreamPlayer.new()
+		_flare_sound_player.stream = flare_stream
+		_flare_sound_player.volume_db = -3.0
+		_flare_sound_player.bus = &"Master"
+		add_child(_flare_sound_player)
+
+	# Altitude warning
+	var alt_stream: AudioStream = load("res://assets/audio/altitude warning.mp3")
+	if alt_stream:
+		alt_stream.loop = true
+		_altitude_sound_player = AudioStreamPlayer.new()
+		_altitude_sound_player.stream = alt_stream
+		_altitude_sound_player.volume_db = -3.0
+		_altitude_sound_player.bus = &"Master"
+		add_child(_altitude_sound_player)
 
 func _apply_glow_to_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
@@ -396,6 +442,8 @@ func _physics_process(delta: float) -> void:
 		if not get_tree().get_nodes_in_group("enemy_projectile").is_empty():
 			_deploy_flare()
 			_flare_cooldown = FLARE_COOLDOWN
+			if _flare_sound_player:
+				_flare_sound_player.play()
 	_flare_key_was_pressed = f_pressed
 
 	# Invincibility
@@ -465,15 +513,53 @@ func _update_visuals(delta: float) -> void:
 		var speed_ratio: float = _current_speed / move_speed
 		_jet_engine_player.pitch_scale = 0.7 + speed_ratio * 0.6
 
-	# Lock-on audio: play when weapon_manager has a locked target
-	if _lock_sound_player and weapon_manager:
+	# Lock-on audio: tracking tone while acquiring, lock tone when locked
+	if weapon_manager:
 		var has_lock: bool = weapon_manager.locked_target != null and is_instance_valid(weapon_manager.locked_target)
-		if has_lock and not _lock_sound_playing:
-			_lock_sound_player.play()
-			_lock_sound_playing = true
-		elif not has_lock and _lock_sound_playing:
-			_lock_sound_player.stop()
-			_lock_sound_playing = false
+		var is_tracking: bool = not has_lock and weapon_manager.tracking_target != null and is_instance_valid(weapon_manager.tracking_target) and weapon_manager.lock_progress > 0.0
+
+		# Full lock tone
+		if _lock_sound_player:
+			if has_lock and not _lock_sound_playing:
+				_lock_sound_player.play()
+				_lock_sound_playing = true
+				# Stop tracking tone when we get full lock
+				if _tracking_sound_player and _tracking_sound_playing:
+					_tracking_sound_player.stop()
+					_tracking_sound_playing = false
+			elif not has_lock and _lock_sound_playing:
+				_lock_sound_player.stop()
+				_lock_sound_playing = false
+
+		# Sidewinder tracking tone (acquiring lock)
+		if _tracking_sound_player:
+			if is_tracking and not _tracking_sound_playing:
+				_tracking_sound_player.play()
+				_tracking_sound_playing = true
+			elif not is_tracking and _tracking_sound_playing:
+				_tracking_sound_player.stop()
+				_tracking_sound_playing = false
+
+	# Incoming missile warning
+	if _incoming_sound_player:
+		var enemy_missiles := get_tree().get_nodes_in_group("enemy_projectile")
+		var has_incoming: bool = not enemy_missiles.is_empty()
+		if has_incoming and not _incoming_sound_playing:
+			_incoming_sound_player.play()
+			_incoming_sound_playing = true
+		elif not has_incoming and _incoming_sound_playing:
+			_incoming_sound_player.stop()
+			_incoming_sound_playing = false
+
+	# Altitude warning (below 50m)
+	if _altitude_sound_player:
+		var low_alt: bool = global_position.y < ALTITUDE_WARNING_THRESHOLD and global_position.y > 0.0
+		if low_alt and not _altitude_warning_active:
+			_altitude_sound_player.play()
+			_altitude_warning_active = true
+		elif not low_alt and _altitude_warning_active:
+			_altitude_sound_player.stop()
+			_altitude_warning_active = false
 
 	# F-14 wing sweep: forward at slow speed, swept back at high speed
 	if _wing_pivot_right and _wing_pivot_left:
