@@ -149,15 +149,23 @@ func _setup_visuals() -> void:
 	_plane_body = Node3D.new()
 	_plane_pivot.add_child(_plane_body)
 
-	# Load .glb model
-	var jet_scene: PackedScene = load("res://assets/Jet.glb")
+	# Load F-14 model, fallback to Jet.glb
+	var jet_scene: PackedScene = load("res://assets/f-14/f14d.glb")
+	var f14_model: bool = jet_scene != null
+	if not f14_model:
+		jet_scene = load("res://assets/Jet.glb")
 	if jet_scene == null:
-		push_error("Failed to load Jet.glb!")
+		push_error("Failed to load any plane model!")
 		return
 	var jet_instance: Node3D = jet_scene.instantiate()
-	jet_instance.scale = Vector3(15.0, 15.0, 15.0)
-	jet_instance.position.y = 30.0 # lift above water for banking
-	jet_instance.rotation.y = deg_to_rad(180.0) # nose forward (-Z)
+	if f14_model:
+		jet_instance.scale = Vector3(15.0, 15.0, 15.0)
+		jet_instance.rotation.x = deg_to_rad(-90.0)  # model Y (length) → Godot -Z (forward)
+		jet_instance.position.y = 30.0
+	else:
+		jet_instance.scale = Vector3(15.0, 15.0, 15.0)
+		jet_instance.position.y = 30.0
+		jet_instance.rotation.y = deg_to_rad(180.0)
 	_plane_body.add_child(jet_instance)
 
 	# Blob shadow on ground
