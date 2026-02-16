@@ -16,6 +16,13 @@ uniform float water_level : hint_range(0.1, 1.0) = 1.0;
 uniform vec2 offset = vec2(0.0, 0.0);
 uniform float time_val : hint_range(0.0, 100000.0) = 0.0;
 
+// Water quality
+uniform vec3 sun_direction = vec3(0.4, 0.8, -0.3);
+uniform float specular_power : hint_range(32.0, 512.0) = 200.0;
+uniform float specular_intensity : hint_range(0.0, 3.0) = 1.2;
+uniform vec4 sky_reflect_color : source_color = vec4(0.45, 0.65, 0.85, 1.0);
+uniform vec4 sss_color : source_color = vec4(0.05, 0.4, 0.3, 1.0);
+
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -76,7 +83,10 @@ float wave_at(vec2 wp, float t) {
 	w += sin(uv.x * 3.0 + t * 1.2) * 0.25;
 	w += sin(uv.y * 2.5 + t * 0.9) * 0.2;
 	w += sin((uv.x + uv.y) * 2.0 + t * 1.5) * 0.15;
-	w += fbm2(uv * 3.0 + vec2(t * 0.4, t * 0.3)) * 0.35;
+	w += sin(uv.x * 1.5 - uv.y * 1.8 + t * 0.7) * 0.1; // cross wave
+	// Gerstner-like: sharpen crests, flatten troughs
+	w = w + 0.18 * w * w * sign(w);
+	w += fbm2(uv * 3.0 + vec2(t * 0.4, t * 0.3)) * 0.3;
 	return w;
 }
 
@@ -96,6 +106,8 @@ float caustic(vec2 p, float t) {
 }
 
 varying float v_terrain;
+varying vec3 v_wave_normal;
+varying float v_wave_val;
 
 void vertex() {
 	vec2 wp = UV * 6000.0 + offset;
@@ -106,7 +118,21 @@ void vertex() {
 	float land_factor = smoothstep(-0.04, 0.04, terrain - water_level);
 	float land_h = max(terrain - water_level, 0.0) * terrain_height;
 	float w = wave_at(wp, t) * wave_height;
+	v_wave_val = w / wave_height;
 	VERTEX.y += mix(w, land_h, land_factor);
+
+	// Analytical wave normal from sine wave derivatives (cheap, skip fbm)
+	vec2 uv = wp * 0.004;
+	float dhdx = cos(uv.x * 3.0 + t * 1.2) * 3.0 * 0.004 * 0.25
+	           + cos((uv.x + uv.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
+	           + cos(uv.x * 1.5 - uv.y * 1.8 + t * 0.7) * 1.5 * 0.004 * 0.1;
+	float dhdz = cos(uv.y * 2.5 + t * 0.9) * 2.5 * 0.004 * 0.2
+	           + cos((uv.x + uv.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
+	           + cos(uv.x * 1.5 - uv.y * 1.8 + t * 0.7) * (-1.8) * 0.004 * 0.1;
+	dhdx *= wave_height;
+	dhdz *= wave_height;
+	vec3 wave_n = normalize(vec3(-dhdx, 1.0, -dhdz));
+	v_wave_normal = mix(wave_n, vec3(0.0, 1.0, 0.0), land_factor);
 }
 
 void fragment() {
@@ -165,41 +191,61 @@ void fragment() {
 
 	// --- WATER COLOR ---
 	float below = max(water_level - terrain, 0.0);
-	float depth = clamp(below / 0.25, 0.0, 1.0);
 
-	// Color variation using terrain noise for natural patches
-	vec3 ocean_mid = vec3(0.06, 0.25, 0.45);
-	vec3 turquoise = vec3(0.1, 0.38, 0.45);
+	// Beer's law depth — exponential falloff for natural depth coloring
+	float depth_raw = below / 0.25;
+	float beer = exp(-depth_raw * 2.0);
+
+	// Base depth color
+	vec3 water_col = mix(deep_color.rgb, shallow_color.rgb, beer);
+
+	// Tropical color patches
+	vec3 turquoise = vec3(0.1, 0.4, 0.48);
 	float color_var = fbm2(world_uv * 0.0006 + vec2(200.0, 300.0));
-	vec3 water_col = mix(shallow_color.rgb, ocean_mid, color_var * 0.6);
-	water_col = mix(water_col, turquoise, (1.0 - depth) * 0.3);
-	water_col = mix(water_col, deep_color.rgb, depth * depth * 0.6);
+	water_col = mix(water_col, turquoise, beer * color_var * 0.4);
 
-	// Wave color variation
-	float w = wave_at(world_uv, t);
-	float wave_bright = smoothstep(-0.2, 0.5, w);
-	water_col = mix(water_col, shallow_color.rgb * 1.3, wave_bright * 0.2);
+	// View direction in world space for fresnel/specular
+	vec3 view_dir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
+	vec3 normal_w = normalize(v_wave_normal);
 
-	// Wave troughs slightly darker
-	float wave_dark = smoothstep(0.1, -0.4, w);
+	// Fresnel effect — more sky reflection at grazing angles
+	float fresnel = pow(1.0 - max(dot(normal_w, view_dir), 0.0), 4.0);
+	water_col = mix(water_col, sky_reflect_color.rgb, fresnel * 0.35);
+
+	// Subsurface scattering — light passing through wave crests
+	float sss = smoothstep(-0.1, 0.4, v_wave_val) * beer;
+	water_col += sss_color.rgb * sss * 0.4;
+
+	// Sun specular highlights with sparkle
+	vec3 sun_d = normalize(sun_direction);
+	vec3 half_vec = normalize(sun_d + view_dir);
+	float spec = pow(max(dot(normal_w, half_vec), 0.0), specular_power);
+	float sparkle = noise(world_uv * 0.05 + vec2(t * 2.0, -t * 1.5));
+	spec *= 0.7 + sparkle * 0.6;
+	water_col += vec3(1.0, 0.95, 0.85) * spec * specular_intensity;
+
+	// Wave brightness/darkness
+	float wave_bright = smoothstep(-0.2, 0.5, v_wave_val);
+	water_col = mix(water_col, shallow_color.rgb * 1.3, wave_bright * 0.15);
+	float wave_dark = smoothstep(0.1, -0.4, v_wave_val);
 	water_col = mix(water_col, deep_color.rgb, wave_dark * 0.15);
 
-	// Caustics — brighter and more visible
+	// Caustics — fade with depth (Beer's law)
 	float c = caustic(world_uv * 0.012 + vec2(t * 0.3, t * 0.2), t);
-	float caust = smoothstep(0.15, 0.0, c) * 0.5;
+	float caust = smoothstep(0.15, 0.0, c) * 0.5 * beer;
 	water_col += vec3(0.15, 0.35, 0.45) * caust;
 
-	// Second layer of caustics at different scale for richness
 	float c2 = caustic(world_uv * 0.005 + vec2(-t * 0.15, t * 0.1), t * 0.7);
-	float caust2 = smoothstep(0.2, 0.0, c2) * 0.25;
+	float caust2 = smoothstep(0.2, 0.0, c2) * 0.25 * (0.3 + beer * 0.7);
 	water_col += vec3(0.1, 0.25, 0.35) * caust2;
 
-	// Whitecap foam scattered across ocean
+	// Whitecap foam — concentrated on wave crests
 	float foam_n1 = fbm2(world_uv * 0.008 + vec2(t * 0.3, -t * 0.2));
 	float foam_n2 = noise(world_uv * 0.025 + vec2(t * 0.6, t * 0.4));
 	float whitecap = smoothstep(0.55, 0.7, foam_n1) * smoothstep(0.5, 0.65, foam_n2);
+	whitecap *= smoothstep(-0.1, 0.3, v_wave_val); // only on crests
 	float foam_flicker = sin(world_uv.x * 0.03 + t * 3.0) * 0.3 + 0.7;
-	water_col = mix(water_col, foam_color.rgb, whitecap * foam_flicker * 0.6);
+	water_col = mix(water_col, foam_color.rgb, whitecap * foam_flicker * 0.7);
 
 	// --- BLEND ---
 	vec3 color = mix(water_col, land_color, land_factor);
