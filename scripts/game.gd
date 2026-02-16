@@ -140,7 +140,7 @@ func _ready() -> void:
 func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(200000, 200000)
+	plane.size = Vector2(100000, 100000)
 	plane.subdivide_width = 256
 	plane.subdivide_depth = 256
 	_ground.mesh = plane

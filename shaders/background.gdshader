@@ -10,7 +10,7 @@ uniform vec4 grass_dark : source_color = vec4(0.08, 0.28, 0.06, 1.0);
 uniform vec4 forest_color : source_color = vec4(0.04, 0.2, 0.08, 1.0);
 uniform vec4 rock_color : source_color = vec4(0.4, 0.38, 0.32, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.7, 0.9, 0.95, 1.0);
-uniform float wave_height : hint_range(1.0, 20.0) = 8.0;
+uniform float wave_height : hint_range(0.0, 20.0) = 0.0;
 uniform float terrain_height : hint_range(5.0, 60.0) = 30.0;
 uniform float water_level : hint_range(0.1, 1.0) = 1.0;
 uniform vec2 offset = vec2(0.0, 0.0);
@@ -22,6 +22,7 @@ uniform float specular_power : hint_range(32.0, 512.0) = 200.0;
 uniform float specular_intensity : hint_range(0.0, 3.0) = 1.2;
 uniform vec4 sky_reflect_color : source_color = vec4(0.45, 0.65, 0.85, 1.0);
 uniform vec4 sss_color : source_color = vec4(0.05, 0.4, 0.3, 1.0);
+uniform float detail_normal_strength : hint_range(0.0, 10.0) = 5.0;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -34,12 +35,39 @@ float hash2(vec2 p) {
 float noise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
+	// Quintic interpolation (C2 continuous) — eliminates grid artifacts in derivatives
+	f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
 	float a = hash(i);
 	float b = hash(i + vec2(1.0, 0.0));
 	float c = hash(i + vec2(0.0, 1.0));
 	float d = hash(i + vec2(1.0, 1.0));
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Value noise with analytical derivatives (Inigo Quilez technique)
+// Returns vec3(value, dNoise/dx, dNoise/dy) — no finite differences needed
+vec3 noised(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	// Quintic interpolation
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	// Analytical derivative of quintic
+	vec2 du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+
+	float a = hash(i);
+	float b = hash(i + vec2(1.0, 0.0));
+	float c = hash(i + vec2(0.0, 1.0));
+	float d = hash(i + vec2(1.0, 1.0));
+
+	float k1 = b - a;
+	float k2 = c - a;
+	float k4 = a - b - c + d;
+
+	return vec3(
+		a + k1 * u.x + k2 * u.y + k4 * u.x * u.y,
+		du.x * (k1 + k4 * u.y),
+		du.y * (k2 + k4 * u.x)
+	);
 }
 
 float fbm3(vec2 p) {
@@ -90,6 +118,24 @@ float wave_at(vec2 wp, float t) {
 	return w;
 }
 
+// Per-pixel wave detail with analytical derivatives (no finite differences!)
+// Returns vec3(height, dh/dx, dh/dz) — smooth C2, no grid artifacts
+vec3 detail_waves(vec2 p, float t) {
+	float s1 = 0.025; float a1 = 0.5;
+	float s2 = 0.06;  float a2 = 0.25;
+	float s3 = 0.14;  float a3 = 0.125;
+
+	vec3 n1 = noised(p * s1 + vec2(t * 0.5, t * 0.35));
+	vec3 n2 = noised(p * s2 + vec2(-t * 0.35, t * 0.55));
+	vec3 n3 = noised(p * s3 + vec2(t * 0.7, -t * 0.25));
+
+	return vec3(
+		n1.x * a1 + n2.x * a2 + n3.x * a3,
+		n1.y * s1 * a1 + n2.y * s2 * a2 + n3.y * s3 * a3,  // chain rule: dh/dp * dp/dx
+		n1.z * s1 * a1 + n2.z * s2 * a2 + n3.z * s3 * a3
+	);
+}
+
 float caustic(vec2 p, float t) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
@@ -106,11 +152,9 @@ float caustic(vec2 p, float t) {
 }
 
 varying float v_terrain;
-varying vec3 v_wave_normal;
-varying float v_wave_val;
 
 void vertex() {
-	vec2 wp = UV * 6000.0 + offset;
+	vec2 wp = UV * 3000.0 + offset;
 	float t = time_val * 0.4;
 	float terrain = terrain_at(wp);
 	v_terrain = terrain;
@@ -118,25 +162,15 @@ void vertex() {
 	float land_factor = smoothstep(-0.04, 0.04, terrain - water_level);
 	float land_h = max(terrain - water_level, 0.0) * terrain_height;
 	float w = wave_at(wp, t) * wave_height;
-	v_wave_val = w / wave_height;
-	VERTEX.y += mix(w, land_h, land_factor);
 
-	// Analytical wave normal from sine wave derivatives (cheap, skip fbm)
-	vec2 uv = wp * 0.004;
-	float dhdx = cos(uv.x * 3.0 + t * 1.2) * 3.0 * 0.004 * 0.25
-	           + cos((uv.x + uv.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
-	           + cos(uv.x * 1.5 - uv.y * 1.8 + t * 0.7) * 1.5 * 0.004 * 0.1;
-	float dhdz = cos(uv.y * 2.5 + t * 0.9) * 2.5 * 0.004 * 0.2
-	           + cos((uv.x + uv.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
-	           + cos(uv.x * 1.5 - uv.y * 1.8 + t * 0.7) * (-1.8) * 0.004 * 0.1;
-	dhdx *= wave_height;
-	dhdz *= wave_height;
-	vec3 wave_n = normalize(vec3(-dhdx, 1.0, -dhdz));
-	v_wave_normal = mix(wave_n, vec3(0.0, 1.0, 0.0), land_factor);
+	// Fade vertex displacement near edges — per-pixel normals handle distant waves
+	float edge_dist = max(abs(UV.x - 0.5), abs(UV.y - 0.5)) * 2.0;
+	float wave_fade = 1.0 - smoothstep(0.5, 0.9, edge_dist);
+	VERTEX.y += mix(w * wave_fade, land_h, land_factor);
 }
 
 void fragment() {
-	vec2 world_uv = UV * 6000.0 + offset;
+	vec2 world_uv = UV * 3000.0 + offset;
 	float t = time_val * 0.4;
 	float terrain = v_terrain;
 
@@ -204,16 +238,38 @@ void fragment() {
 	float color_var = fbm2(world_uv * 0.0006 + vec2(200.0, 300.0));
 	water_col = mix(water_col, turquoise, beer * color_var * 0.4);
 
-	// View direction in world space for fresnel/specular
+	// View direction in world space
 	vec3 view_dir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
-	vec3 normal_w = normalize(v_wave_normal);
 
-	// Fresnel effect — more sky reflection at grazing angles
-	float fresnel = pow(1.0 - max(dot(normal_w, view_dir), 0.0), 4.0);
-	water_col = mix(water_col, sky_reflect_color.rgb, fresnel * 0.35);
+	// === ALL normals computed per-pixel — no vertex interpolation grid ===
+
+	// Macro wave normal from sine wave analytical derivatives (per-pixel)
+	vec2 uv_wave = world_uv * 0.004;
+	float macro_dx = cos(uv_wave.x * 3.0 + t * 1.2) * 3.0 * 0.004 * 0.25
+	               + cos((uv_wave.x + uv_wave.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
+	               + cos(uv_wave.x * 1.5 - uv_wave.y * 1.8 + t * 0.7) * 1.5 * 0.004 * 0.1;
+	float macro_dz = cos(uv_wave.y * 2.5 + t * 0.9) * 2.5 * 0.004 * 0.2
+	               + cos((uv_wave.x + uv_wave.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
+	               + cos(uv_wave.x * 1.5 - uv_wave.y * 1.8 + t * 0.7) * (-1.8) * 0.004 * 0.1;
+
+	// Detail normal from analytical noise derivatives (C2 smooth, no grid!)
+	vec3 detail = detail_waves(world_uv, t);
+
+	// Combined: macro wave shape + micro detail ripples (all analytical)
+	float nx = -macro_dx * 3.0 - detail.y * detail_normal_strength;
+	float nz = -macro_dz * 3.0 - detail.z * detail_normal_strength;
+	vec3 normal_w = normalize(vec3(nx, 1.0, nz));
+
+	// Per-pixel wave value for color effects (also avoids vertex grid)
+	float w_val = wave_at(world_uv, t);
+
+	// Schlick fresnel (F0 = 0.02 for water IOR 1.33)
+	float cos_theta = max(dot(normal_w, view_dir), 0.0);
+	float fresnel = 0.02 + 0.98 * pow(1.0 - cos_theta, 5.0);
+	water_col = mix(water_col, sky_reflect_color.rgb, fresnel);
 
 	// Subsurface scattering — light passing through wave crests
-	float sss = smoothstep(-0.1, 0.4, v_wave_val) * beer;
+	float sss = smoothstep(-0.1, 0.4, w_val) * beer;
 	water_col += sss_color.rgb * sss * 0.4;
 
 	// Sun specular highlights with sparkle
@@ -225,9 +281,9 @@ void fragment() {
 	water_col += vec3(1.0, 0.95, 0.85) * spec * specular_intensity;
 
 	// Wave brightness/darkness
-	float wave_bright = smoothstep(-0.2, 0.5, v_wave_val);
+	float wave_bright = smoothstep(-0.2, 0.5, w_val);
 	water_col = mix(water_col, shallow_color.rgb * 1.3, wave_bright * 0.15);
-	float wave_dark = smoothstep(0.1, -0.4, v_wave_val);
+	float wave_dark = smoothstep(0.1, -0.4, w_val);
 	water_col = mix(water_col, deep_color.rgb, wave_dark * 0.15);
 
 	// Caustics — fade with depth (Beer's law)
@@ -243,7 +299,7 @@ void fragment() {
 	float foam_n1 = fbm2(world_uv * 0.008 + vec2(t * 0.3, -t * 0.2));
 	float foam_n2 = noise(world_uv * 0.025 + vec2(t * 0.6, t * 0.4));
 	float whitecap = smoothstep(0.55, 0.7, foam_n1) * smoothstep(0.5, 0.65, foam_n2);
-	whitecap *= smoothstep(-0.1, 0.3, v_wave_val); // only on crests
+	whitecap *= smoothstep(-0.1, 0.3, w_val); // only on crests
 	float foam_flicker = sin(world_uv.x * 0.03 + t * 3.0) * 0.3 + 0.7;
 	water_col = mix(water_col, foam_color.rgb, whitecap * foam_flicker * 0.7);
 
