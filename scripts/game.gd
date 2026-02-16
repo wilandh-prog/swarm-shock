@@ -94,6 +94,15 @@ func _ready() -> void:
 	add_child(camera)
 	camera.make_current()
 
+	# Sky/background color matching horizon_color in the ocean shader
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.55, 0.65, 0.78)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.6, 0.65, 0.7)
+	env.ambient_light_energy = 0.3
+	camera.environment = env
+
 	# Ground plane with background shader
 	_setup_background()
 
