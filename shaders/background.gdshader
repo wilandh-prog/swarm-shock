@@ -23,6 +23,7 @@ uniform float specular_intensity : hint_range(0.0, 3.0) = 1.2;
 uniform vec4 sky_reflect_color : source_color = vec4(0.45, 0.65, 0.85, 1.0);
 uniform vec4 sss_color : source_color = vec4(0.05, 0.4, 0.3, 1.0);
 uniform float detail_normal_strength : hint_range(0.0, 10.0) = 5.0;
+uniform vec4 horizon_color : source_color = vec4(0.55, 0.65, 0.78, 1.0);
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -255,9 +256,13 @@ void fragment() {
 	// Detail normal from analytical noise derivatives (C2 smooth, no grid!)
 	vec3 detail = detail_waves(world_uv, t);
 
+	// Fade detail at distance to prevent aliasing at horizon
+	float dist_uv = max(abs(UV.x - 0.5), abs(UV.y - 0.5)) * 2.0;
+	float detail_fade = 1.0 - smoothstep(0.25, 0.6, dist_uv);
+
 	// Combined: macro wave shape + micro detail ripples (all analytical)
-	float nx = -macro_dx * 3.0 - detail.y * detail_normal_strength;
-	float nz = -macro_dz * 3.0 - detail.z * detail_normal_strength;
+	float nx = -macro_dx * 3.0 - detail.y * detail_normal_strength * detail_fade;
+	float nz = -macro_dz * 3.0 - detail.z * detail_normal_strength * detail_fade;
 	vec3 normal_w = normalize(vec3(nx, 1.0, nz));
 
 	// Per-pixel wave value for color effects (also avoids vertex grid)
@@ -305,6 +310,10 @@ void fragment() {
 
 	// --- BLEND ---
 	vec3 color = mix(water_col, land_color, land_factor);
+
+	// Atmospheric haze — fade to horizon color at distance (hides plane edge)
+	float fog = smoothstep(0.35, 0.85, dist_uv);
+	color = mix(color, horizon_color.rgb, fog);
 
 	ALBEDO = color;
 	EMISSION = color;
