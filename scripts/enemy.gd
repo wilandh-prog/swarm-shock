@@ -26,18 +26,25 @@ var _spawn_time: float = 0.0
 var _hit_scale: float = 1.0
 
 # Combat AI
-enum AIState { APPROACH, FIRE, BREAK_AWAY }
+enum AIState { APPROACH, FIRE, BREAK_AWAY, GUN_STRAFE }
 var _ai_state: AIState = AIState.APPROACH
 var _fire_cooldown: float = 0.0
 var _missiles_remaining: int = 4
 var _break_timer: float = 0.0
 var _break_direction: float = 1.0  # +1 or -1 for left/right break
+var _gun_cooldown: float = 0.0
+var _burst_remaining: int = 0
 const FIRE_RANGE: float = 1200.0
 const FIRE_CONE: float = 0.85  # dot product (~30 degrees)
 const BREAK_DURATION: float = 2.5
 const FIRE_RATE: float = 3.0
 const ENEMY_MISSILE_SPEED: float = 1000.0
 const ENEMY_MISSILE_DAMAGE: float = 8.0
+const ENEMY_GUN_SPEED: float = 3000.0
+const ENEMY_GUN_DAMAGE: float = 4.0
+const GUN_FIRE_RATE: float = 0.12
+const GUN_BURST_COUNT: int = 6
+const GUN_RANGE: float = 900.0
 
 # Flight
 var _heading: float = 0.0
@@ -340,6 +347,7 @@ func _process(delta: float) -> void:
 
 	# --- Combat AI ---
 	_fire_cooldown -= delta
+	_gun_cooldown -= delta
 
 	if target and is_instance_valid(target):
 		var to_target: Vector3 = target.global_position - global_position
@@ -363,6 +371,11 @@ func _process(delta: float) -> void:
 					var dot: float = fwd.dot(to_target.normalized())
 					if dot > FIRE_CONE:
 						_ai_state = AIState.FIRE
+				elif _missiles_remaining <= 0 and dist_to_target < GUN_RANGE and _gun_cooldown <= 0.0:
+					var dot: float = fwd.dot(to_target.normalized())
+					if dot > FIRE_CONE:
+						_ai_state = AIState.GUN_STRAFE
+						_burst_remaining = GUN_BURST_COUNT
 
 			AIState.FIRE:
 				# Fire missile at player and immediately break
@@ -386,6 +399,24 @@ func _process(delta: float) -> void:
 				_break_timer -= delta
 				if _break_timer <= 0.0:
 					_ai_state = AIState.APPROACH
+
+			AIState.GUN_STRAFE:
+				# Strafing run: keep steering toward player, fire gun bursts
+				var desired_heading: float = atan2(to_target.x, -to_target.z)
+				var angle_diff: float = angle_difference(_heading, desired_heading)
+				var turn_input: float = clampf(angle_diff / (PI * 0.25), -1.0, 1.0)
+				_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate, TURN_ACCEL * delta)
+
+				if _gun_cooldown <= 0.0 and _burst_remaining > 0:
+					_fire_gun_at_target()
+					_burst_remaining -= 1
+					_gun_cooldown = GUN_FIRE_RATE
+
+				if _burst_remaining <= 0 or dist_to_target < 100.0:
+					_ai_state = AIState.BREAK_AWAY
+					_break_timer = BREAK_DURATION * 0.7
+					_break_direction = [-1.0, 1.0][randi() % 2]
+					_gun_cooldown = GUN_FIRE_RATE * 5.0
 	else:
 		_turn_speed = move_toward(_turn_speed, 0.0, TURN_ACCEL * delta)
 
@@ -488,14 +519,36 @@ func _fire_missile_at_target() -> void:
 		return
 	var proj: Area3D = proj_scene.instantiate()
 	# Enemy missiles: red, slightly slower, aimed at player
+	proj.is_enemy_missile = true
 	proj.setup(dir, ENEMY_MISSILE_DAMAGE, ENEMY_MISSILE_SPEED)
 	proj.homing_target = target
 	proj.homing_turn_rate = 2.0
+	get_tree().current_scene.call_deferred("add_child", proj)
+	proj.set_deferred("global_position", global_position)
+
+func _fire_gun_at_target() -> void:
+	if not target or not is_instance_valid(target):
+		return
+	var dir: Vector3 = (target.global_position - global_position).normalized()
+	dir.y = 0.0
+	if dir.length() < 0.01:
+		return
+	dir = dir.normalized()
+	# Slight spread
+	var spread_rad: float = deg_to_rad(2.0)
+	dir = dir.rotated(Vector3.UP, randf_range(-spread_rad, spread_rad))
+
+	var proj_scene: PackedScene = load("res://scenes/entities/projectile.tscn")
+	if not proj_scene:
+		return
+	var proj: Area3D = proj_scene.instantiate()
+	proj.is_bullet = true
 	proj.is_enemy_missile = true
-	proj.remove_from_group("projectile")
-	proj.add_to_group("enemy_projectile")
-	proj.collision_layer = 0
-	proj.collision_mask = 0
+	proj.lifetime = 2.0
+	proj.explosion_radius = 0.0
+	proj.setup(dir, ENEMY_GUN_DAMAGE, ENEMY_GUN_SPEED)
+	proj.homing_target = target
+	proj.homing_turn_rate = 0.0  # straight flight, homing_target for proximity hit detection
 	get_tree().current_scene.call_deferred("add_child", proj)
 	proj.set_deferred("global_position", global_position)
 

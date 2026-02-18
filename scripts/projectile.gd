@@ -16,8 +16,12 @@ var is_enemy_missile: bool = false
 var is_bullet: bool = false
 
 func _ready() -> void:
-	add_to_group("projectile")
-	collision_layer = 8
+	if is_enemy_missile:
+		add_to_group("enemy_projectile")
+		collision_layer = 0
+	else:
+		add_to_group("projectile")
+		collision_layer = 8
 	collision_mask = 0
 	monitoring = false
 	monitorable = true
@@ -155,11 +159,13 @@ func _build_mesh() -> void:
 	add_child(_mesh_root)
 
 func _build_bullet_mesh() -> void:
-	# Yellow tracer round
+	# Red/orange tracer for enemy, yellow for player
+	var bullet_color: Color = Color(1.0, 0.3, 0.15) if is_enemy_missile else Color(1.0, 0.9, 0.3)
+	var emit_color: Color = Color(1.0, 0.2, 0.1) if is_enemy_missile else Color(1.0, 0.8, 0.2)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.9, 0.3)
+	mat.albedo_color = bullet_color
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.8, 0.2)
+	mat.emission = emit_color
 	mat.emission_energy_multiplier = 4.0
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
@@ -194,8 +200,11 @@ func _process(delta: float) -> void:
 		var dist := to_target.length()
 		if dist > 1.0:
 			var desired := to_target / dist
-			# Smoothly rotate direction toward target (full 3D)
-			direction = direction.slerp(desired, homing_turn_rate * delta).normalized()
+			var turn := homing_turn_rate
+			# Terminal guidance: tighten turn when close to prevent orbiting
+			if dist < 400.0:
+				turn *= 1.5 + (1.0 - dist / 400.0) * 4.0
+			direction = direction.slerp(desired, turn * delta).normalized()
 			_update_mesh_orientation()
 
 	# Flare attraction for enemy missiles
@@ -211,7 +220,7 @@ func _process(delta: float) -> void:
 	# Proximity detonation for all homing missiles
 	if homing_target and is_instance_valid(homing_target):
 		var dist: float = global_position.distance_to(homing_target.global_position)
-		if dist < 40.0:
+		if dist < 60.0:
 			if not is_enemy_missile and homing_target.has_method("take_damage"):
 				homing_target.take_damage(damage)
 			elif is_enemy_missile and homing_target.has_method("take_damage"):
@@ -219,12 +228,6 @@ func _process(delta: float) -> void:
 			_explode()
 			return
 
-	# Enemy missiles check proximity to player (fallback)
-	if is_enemy_missile and homing_target and is_instance_valid(homing_target):
-		var dist: float = global_position.distance_to(homing_target.global_position)
-		if dist < 30.0 and homing_target.has_method("take_damage"):
-			homing_target.take_damage(damage)
-			_explode()
 
 func _check_flare_attract() -> void:
 	var flares := get_tree().get_nodes_in_group("flare")

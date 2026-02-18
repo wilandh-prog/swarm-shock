@@ -155,6 +155,35 @@ func _fire_gun() -> void:
 		return
 	var heading: float = player._heading
 	var aim_dir := Vector3(sin(heading), 0.0, -cos(heading))
+
+	# Auto-aim: find closest enemy in a wide cone and lead-target it
+	var best_enemy: Node3D = null
+	var best_dot: float = 0.3  # ~72° cone
+	for enemy in player.get_tree().get_nodes_in_group("enemy"):
+		if not is_instance_valid(enemy):
+			continue
+		var to_enemy: Vector3 = enemy.global_position - player.global_position
+		var dist: float = to_enemy.length()
+		if dist < 50.0 or dist > 2000.0:
+			continue
+		var dot: float = aim_dir.dot(to_enemy / dist)
+		if dot > best_dot:
+			best_dot = dot
+			best_enemy = enemy
+
+	if best_enemy:
+		# Lead targeting: aim where enemy will be
+		var to_enemy: Vector3 = best_enemy.global_position - player.global_position
+		var flight_time: float = to_enemy.length() / gun_speed
+		var enemy_vel: Vector3 = Vector3.ZERO
+		if best_enemy.has_method("get_velocity"):
+			enemy_vel = best_enemy.get_velocity()
+		elif best_enemy.get("speed") != null and best_enemy.get("_heading") != null:
+			var eh: float = best_enemy._heading
+			enemy_vel = Vector3(sin(eh), 0.0, -cos(eh)) * best_enemy.speed
+		var predicted: Vector3 = best_enemy.global_position + enemy_vel * flight_time
+		aim_dir = (predicted - player.global_position).normalized()
+
 	# Random spread
 	var spread_rad: float = deg_to_rad(gun_spread)
 	var sx: float = randf_range(-spread_rad, spread_rad)
