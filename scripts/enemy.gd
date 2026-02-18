@@ -66,29 +66,33 @@ const TYPE_CONFIG := {
 		"hp": 30.0, "speed": 1500.0, "damage": 10.0,
 		"xp": 1, "volt_chance": 0.1, "radius": 14.0,
 		"color": Color(0.22, 0.24, 0.26),
-		"model": "res://assets/enemy1.glb",
+		"model": "res://assets/mig-e8/mig-e8.glb",
 		"scale": 30.0, "turn_rate": 1.2,
+		"model_rot_y": 180.0, "unshaded": false,
 	},
 	EnemyType.FAST: {
 		"hp": 15.0, "speed": 2000.0, "damage": 8.0,
 		"xp": 1, "volt_chance": 0.08, "radius": 10.0,
 		"color": Color(0.28, 0.30, 0.32),
-		"model": "res://assets/enemy2.glb",
+		"model": "res://assets/sukhoi/sukhoi.glb",
 		"scale": 25.0, "turn_rate": 0.8,
+		"model_rot_y": 180.0, "unshaded": true,
 	},
 	EnemyType.TANK: {
 		"hp": 100.0, "speed": 1000.0, "damage": 20.0,
 		"xp": 3, "volt_chance": 0.25, "radius": 22.0,
 		"color": Color(0.18, 0.20, 0.22),
-		"model": "res://assets/enemy3.glb",
+		"model": "res://assets/mig-e8/mig-e8.glb",
 		"scale": 40.0, "turn_rate": 0.6,
+		"model_rot_y": 180.0, "unshaded": false,
 	},
 	EnemyType.SWARM: {
 		"hp": 10.0, "speed": 1800.0, "damage": 5.0,
 		"xp": 1, "volt_chance": 0.05, "radius": 8.0,
 		"color": Color(0.25, 0.27, 0.28),
-		"model": "res://assets/enemy4.glb",
-		"scale": 20.0, "turn_rate": 1.0,
+		"model": "res://assets/tornado/tornado.glb",
+		"scale": 40.0, "turn_rate": 1.0,
+		"model_rot_y": 270.0, "unshaded": true,
 	},
 }
 
@@ -160,8 +164,8 @@ func _setup_visuals() -> void:
 	_shadow.position.y = 1.0
 	add_child(_shadow)
 
-static var _mig_scene: PackedScene
-static var _mig_scene_checked: bool = false
+# Cached model scenes per path (shared across all enemies)
+static var _model_cache: Dictionary = {}
 
 func _load_model() -> void:
 	if _model_instance and is_instance_valid(_model_instance):
@@ -170,25 +174,29 @@ func _load_model() -> void:
 
 	var config: Dictionary = TYPE_CONFIG[enemy_type]
 	var model_scale: float = config["scale"]
+	var model_path: String = config["model"]
 
-	# Try MiG E-8 GLB first (cached static)
-	if not _mig_scene_checked:
-		_mig_scene_checked = true
-		_mig_scene = load("res://assets/mig-e8/mig-e8.glb")
+	# Load and cache the GLB scene
+	if not _model_cache.has(model_path):
+		var loaded = load(model_path)
+		_model_cache[model_path] = loaded
+		print("[Enemy] Loaded model: ", model_path, " -> ", loaded)
 
-	if _mig_scene:
-		_model_instance = _mig_scene.instantiate()
-		# Model: X=wingspan(±3.6), Y=height(0.3-3.7), Z=length(±8.2)
-		# Scale factor: procedural was ~4 units at scale 30 = 120 game units
-		# MiG E-8 is ~16 units long, so scale ~7.5 for equivalent size
+	var scene: PackedScene = _model_cache[model_path]
+	if scene:
+		_model_instance = scene.instantiate()
 		var glb_scale: float = model_scale * 0.25
 		_model_instance.scale = Vector3(glb_scale, glb_scale, glb_scale)
-		_model_instance.rotation.y = deg_to_rad(180.0)  # nose toward -Z (forward)
+		var rot_y: float = config.get("model_rot_y", 180.0)
+		_model_instance.rotation.y = deg_to_rad(rot_y)
 		_model_instance.position.y = 20.0
+		if config.get("unshaded", false):
+			_make_unshaded_recursive(_model_instance)
 		_plane_body.add_child(_model_instance)
 		return
 
 	# Fallback: procedural MiG-21 silhouette
+	print("[Enemy] FALLBACK for: ", model_path, " type=", enemy_type)
 	_load_procedural_model(config, model_scale)
 
 func _load_procedural_model(config: Dictionary, model_scale: float) -> void:
@@ -452,6 +460,19 @@ func _apply_material_recursive(node: Node, mat: StandardMaterial3D) -> void:
 		node.material_override = mat
 	for child in node.get_children():
 		_apply_material_recursive(child, mat)
+
+func _make_unshaded_recursive(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh:
+			for i in mi.mesh.get_surface_count():
+				var mat = mi.mesh.surface_get_material(i)
+				if mat is StandardMaterial3D:
+					var dup := mat.duplicate() as StandardMaterial3D
+					dup.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+					mi.set_surface_override_material(i, dup)
+	for child in node.get_children():
+		_make_unshaded_recursive(child)
 
 func _fire_missile_at_target() -> void:
 	if not target or not is_instance_valid(target):
