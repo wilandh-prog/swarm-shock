@@ -219,8 +219,9 @@ func _process(delta: float) -> void:
 
 	# Proximity detonation for all homing missiles
 	if homing_target and is_instance_valid(homing_target):
+		var prox_radius: float = 60.0 if is_enemy_missile else 35.0
 		var dist: float = global_position.distance_to(homing_target.global_position)
-		if dist < 60.0:
+		if dist < prox_radius:
 			if not is_enemy_missile and homing_target.has_method("take_damage"):
 				homing_target.take_damage(damage)
 			elif is_enemy_missile and homing_target.has_method("take_damage"):

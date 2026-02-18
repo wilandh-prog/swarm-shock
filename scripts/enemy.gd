@@ -34,8 +34,10 @@ var _break_timer: float = 0.0
 var _break_direction: float = 1.0  # +1 or -1 for left/right break
 var _gun_cooldown: float = 0.0
 var _burst_remaining: int = 0
-const FIRE_RANGE: float = 1200.0
-const FIRE_CONE: float = 0.85  # dot product (~30 degrees)
+var _lock_timer: float = 0.0
+const FIRE_RANGE: float = 2000.0
+const FIRE_CONE: float = 0.95  # dot product (~18 degrees)
+const LOCK_TIME: float = 0.5
 const BREAK_DURATION: float = 2.5
 const FIRE_RATE: float = 3.0
 const ENEMY_MISSILE_SPEED: float = 1000.0
@@ -44,7 +46,7 @@ const ENEMY_GUN_SPEED: float = 3000.0
 const ENEMY_GUN_DAMAGE: float = 4.0
 const GUN_FIRE_RATE: float = 0.12
 const GUN_BURST_COUNT: int = 6
-const GUN_RANGE: float = 900.0
+const GUN_RANGE: float = 600.0
 
 # Flight
 var _heading: float = 0.0
@@ -366,11 +368,16 @@ func _process(delta: float) -> void:
 				else:
 					_turn_speed = move_toward(_turn_speed, 0.0, TURN_ACCEL * delta)
 
-				# Check if in firing position
+				# Missile lock-on: hold target in cone for LOCK_TIME, then fire
 				if dist_to_target < FIRE_RANGE and _fire_cooldown <= 0.0 and _missiles_remaining > 0:
 					var dot: float = fwd.dot(to_target.normalized())
 					if dot > FIRE_CONE:
-						_ai_state = AIState.FIRE
+						_lock_timer += delta
+						if _lock_timer >= LOCK_TIME:
+							_lock_timer = 0.0
+							_ai_state = AIState.FIRE
+					else:
+						_lock_timer = 0.0
 				elif _missiles_remaining <= 0 and dist_to_target < GUN_RANGE and _gun_cooldown <= 0.0:
 					var dot: float = fwd.dot(to_target.normalized())
 					if dot > FIRE_CONE:
@@ -522,7 +529,7 @@ func _fire_missile_at_target() -> void:
 	proj.is_enemy_missile = true
 	proj.setup(dir, ENEMY_MISSILE_DAMAGE, ENEMY_MISSILE_SPEED)
 	proj.homing_target = target
-	proj.homing_turn_rate = 2.0
+	proj.homing_turn_rate = 1.4
 	get_tree().current_scene.call_deferred("add_child", proj)
 	proj.set_deferred("global_position", global_position)
 
@@ -534,8 +541,8 @@ func _fire_gun_at_target() -> void:
 	if dir.length() < 0.01:
 		return
 	dir = dir.normalized()
-	# Slight spread
-	var spread_rad: float = deg_to_rad(2.0)
+	# Inaccurate spread
+	var spread_rad: float = deg_to_rad(8.0)
 	dir = dir.rotated(Vector3.UP, randf_range(-spread_rad, spread_rad))
 
 	var proj_scene: PackedScene = load("res://scenes/entities/projectile.tscn")
