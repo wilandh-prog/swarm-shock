@@ -224,19 +224,18 @@ func _process(delta: float) -> void:
 	var target_fov: float = 60.0 + speed_ratio * 25.0  # 60° slow, 85° at cruise, 110° at boost
 	camera.fov = lerpf(camera.fov, target_fov, delta * 3.0)
 
-	# Background follows player so terrain never ends
-	if _ground:
+	# Background follows player so terrain never ends (but freezes during landing)
+	if _ground and _phase != GamePhase.LANDING_APPROACH and _phase != GamePhase.LANDED:
 		_ground.global_position.x = player.global_position.x
 		_ground.global_position.z = player.global_position.z
 	if _bg_shader_mat:
-		var pp := Vector2(player.global_position.x, player.global_position.z)
 		if _phase == GamePhase.LANDING_APPROACH or _phase == GamePhase.LANDED:
-			# Smoothly transition ocean scroll from fast arcade to world-correct
-			_scroll_blend = lerpf(_scroll_blend, 0.3, delta * 0.8)
-			var factor := _scroll_blend * 0.97 + 0.03
-			pp = _landing_offset_base + (pp - _landing_offset_base) * factor
-		_bg_shader_mat.set_shader_parameter("offset", pp)
-		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
+			# Freeze offset so ocean pattern is fixed in world space — carrier stays pinned
+			_bg_shader_mat.set_shader_parameter("time_val", _game_time)
+		else:
+			var pp := Vector2(player.global_position.x, player.global_position.z)
+			_bg_shader_mat.set_shader_parameter("offset", pp)
+			_bg_shader_mat.set_shader_parameter("time_val", _game_time)
 
 	# AWACS message system
 	_update_awacs(delta)
@@ -608,12 +607,7 @@ func _update_landing(_delta: float) -> void:
 	if not is_instance_valid(player) or not is_instance_valid(_carrier):
 		return
 
-	# Move carrier toward player for speed sensation
-	var approach_dir := (player.global_position - _carrier.global_position)
-	approach_dir.y = 0.0
-	if approach_dir.length() > 100.0:
-		approach_dir = approach_dir.normalized()
-		_carrier.global_position += approach_dir * player._current_speed * 0.4 * _delta
+	# Carrier is stationary — ocean ground is also frozen, so carrier sits on the waves
 
 	var to_carrier: Vector3 = _carrier.global_position - player.global_position
 	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
@@ -710,3 +704,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
 		if not hud.is_upgrade_open():
 			get_tree().paused = !get_tree().paused
+	# DEBUG: press L to skip straight to landing
+	if event is InputEventKey and event.pressed and event.keycode == KEY_L:
+		if _phase == GamePhase.TUTORIAL or _phase == GamePhase.COMBAT:
+			for e in enemy_container.get_children():
+				e.queue_free()
+			_begin_landing_sequence()
