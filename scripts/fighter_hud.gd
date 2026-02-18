@@ -14,6 +14,12 @@ var _smooth_speed: float = 0.0
 var _smooth_alt: float = 0.0
 var _smooth_g: float = 1.0
 
+# AWACS radio
+var awacs_text: String = ""
+var _awacs_alpha: float = 0.0
+var wave_current: int = 0
+var wave_total: int = 0
+
 # Landing guidance
 var landing_active: bool = false
 var landing_carrier: Node3D = null
@@ -30,6 +36,11 @@ func _process(delta: float) -> void:
 	var turn_frac: float = absf(player._turn_speed) / player.MAX_TURN_RATE
 	var speed_frac: float = player._current_speed / player.move_speed
 	_smooth_g = lerpf(_smooth_g, 1.0 + 7.0 * turn_frac * speed_frac, 5.0 * delta)
+	# AWACS fade out
+	if awacs_text == "":
+		_awacs_alpha = move_toward(_awacs_alpha, 0.0, 2.0 * delta)
+	else:
+		_awacs_alpha = move_toward(_awacs_alpha, 1.0, 4.0 * delta)
 	queue_redraw()
 
 func _draw() -> void:
@@ -49,6 +60,8 @@ func _draw() -> void:
 	_draw_flare_status(ss)
 	_draw_radar(ss)
 	_draw_speed_lines(ss)
+	_draw_awacs_radio(ss)
+	_draw_wave_indicator(ss)
 	if landing_active:
 		_draw_landing_guidance(ss)
 
@@ -527,6 +540,42 @@ func _draw_radar(ss: Vector2) -> void:
 	var font := ThemeDB.fallback_font
 	if font:
 		draw_string(font, Vector2(cx - 10, cy - RADAR_RADIUS - 5), "RDR", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
+
+# --- AWACS radio (top center message) ---
+
+func _draw_awacs_radio(ss: Vector2) -> void:
+	if _awacs_alpha < 0.01:
+		return
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var cx: float = ss.x * 0.5
+	var y: float = ss.y * 0.15
+	var text: String = ">> " + awacs_text
+	var box_w: float = maxf(font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 18).x + 40.0, 280.0)
+	var box_h: float = 36.0
+	var box_rect := Rect2(cx - box_w * 0.5, y - box_h * 0.5, box_w, box_h)
+	# Dark background
+	draw_rect(box_rect, Color(0.0, 0.04, 0.0, 0.7 * _awacs_alpha))
+	# Green border
+	draw_rect(box_rect, Color(0.0, 1.0, 0.255, 0.6 * _awacs_alpha), false, 1.5)
+	# Text
+	draw_string(font, Vector2(cx - box_w * 0.5 + 12, y + 6), text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 24, 18, Color(0.0, 1.0, 0.255, 0.95 * _awacs_alpha))
+
+# --- Wave indicator (top right) ---
+
+func _draw_wave_indicator(ss: Vector2) -> void:
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var x: float = ss.x - 130.0
+	var y: float = 30.0
+	var text: String
+	if wave_total <= 0:
+		text = "TUTORIAL"
+	else:
+		text = "WAVE %d/%d" % [wave_current, wave_total]
+	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, HUD_GREEN_DIM)
 
 # --- Landing guidance ---
 

@@ -12,12 +12,34 @@ var camera: Camera3D
 # Wave spawning
 var _current_wave: int = 0
 var _wave_spawned: bool = false
-const WAVES: Array[int] = [4, 4]  # enemies per wave
 const SPAWN_DISTANCE_MIN: float = 5000.0
 const SPAWN_DISTANCE_MAX: float = 8000.0
-const WAVE_DELAY: float = 2.0  # seconds between waves
+const WAVE_DELAY: float = 3.0  # seconds between waves
 var _wave_delay_timer: float = 0.0
 var _waiting_for_next_wave: bool = false
+
+# Wave config: each wave is a dictionary of EnemyType -> count
+# Difficulty scales with wave index
+const WAVE_CONFIG: Array[Dictionary] = [
+	{"BASIC": 1},
+	{"BASIC": 2},
+	{"BASIC": 2, "FAST": 1},
+	{"BASIC": 1, "FAST": 2, "SWARM": 1},
+	{"BASIC": 1, "FAST": 2, "SWARM": 3},
+]
+
+# Tutorial
+enum TutorialStep { INTRO, WAIT_FLARE, WAIT_KILL_GUN, DONE }
+var _tutorial_step: TutorialStep = TutorialStep.INTRO
+var _tutorial_timer: float = 0.0
+var _tutorial_enemy_1_dead: bool = false
+var _tutorial_enemy_2_spawned: bool = false
+var _tutorial_missile_warned: bool = false
+
+# AWACS message queue
+var _awacs_queue: Array[Dictionary] = []
+var _awacs_current: Dictionary = {}
+var _awacs_timer: float = 0.0
 
 # Chain lightning
 var _chain_arcs: Array[Dictionary] = []
@@ -57,8 +79,8 @@ var _splash_sound: AudioStreamPlayer
 var _carrier: Node3D
 
 # Landing sequence
-enum GamePhase { COMBAT, LANDING_APPROACH, LANDED }
-var _phase: GamePhase = GamePhase.COMBAT
+enum GamePhase { TUTORIAL, COMBAT, LANDING_APPROACH, LANDED }
+var _phase: GamePhase = GamePhase.TUTORIAL
 var _carrier_heading: float = 0.0
 var _carrier_mesh_y: float = 150.0   # carrier mesh origin
 var _carrier_deck_y: float = 70.0    # just above visual deck (deck at ~53)
@@ -216,29 +238,49 @@ func _process(delta: float) -> void:
 		_bg_shader_mat.set_shader_parameter("offset", pp)
 		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
 
-	# Wave spawning
-	if _current_wave < WAVES.size():
-		if not _wave_spawned:
-			_spawn_wave(_current_wave)
-			_wave_spawned = true
-		elif _waiting_for_next_wave:
-			_wave_delay_timer += delta
-			if _wave_delay_timer >= WAVE_DELAY:
-				_waiting_for_next_wave = false
-				_wave_delay_timer = 0.0
-				_current_wave += 1
-				_wave_spawned = false
-		elif enemy_container.get_child_count() == 0:
-			_waiting_for_next_wave = true
-			_wave_delay_timer = 0.0
+	# AWACS message system
+	_update_awacs(delta)
 
-	# Landing trigger: all waves done and all enemies dead
-	if _phase == GamePhase.COMBAT and _current_wave >= WAVES.size() and enemy_container.get_child_count() == 0:
-		_begin_landing_sequence()
+	# Phase-specific logic
+	if _phase == GamePhase.TUTORIAL:
+		_update_tutorial(delta)
+	elif _phase == GamePhase.COMBAT:
+		# Wave spawning
+		if _current_wave < WAVE_CONFIG.size():
+			if not _wave_spawned:
+				_spawn_wave_from_config(_current_wave)
+				_wave_spawned = true
+			elif _waiting_for_next_wave:
+				_wave_delay_timer += delta
+				if _wave_delay_timer >= WAVE_DELAY:
+					_waiting_for_next_wave = false
+					_wave_delay_timer = 0.0
+					_current_wave += 1
+					_wave_spawned = false
+			elif enemy_container.get_child_count() == 0:
+				_waiting_for_next_wave = true
+				_wave_delay_timer = 0.0
+				awacs_message("AREA CLEAR. STANDBY.", 3.0)
+
+		# Landing trigger: all waves done and all enemies dead
+		if _current_wave >= WAVE_CONFIG.size() and enemy_container.get_child_count() == 0:
+			awacs_message("ALL TARGETS DOWN. RTB -- CARRIER AHEAD.", 4.0)
+			_begin_landing_sequence()
 
 	# Landing approach update
 	if _phase == GamePhase.LANDING_APPROACH:
 		_update_landing(delta)
+
+	# Send AWACS text + wave info to HUD
+	if _awacs_current.size() > 0:
+		hud.set_awacs_message(_awacs_current.get("text", ""))
+	else:
+		hud.set_awacs_message("")
+	if _phase == GamePhase.TUTORIAL:
+		hud.set_wave_info(0, 0)
+	elif _phase == GamePhase.COMBAT:
+		hud.set_wave_info(mini(_current_wave + 1, WAVE_CONFIG.size()), WAVE_CONFIG.size())
+
 
 	# Pickup attraction
 	if _attract_timer >= ATTRACT_CHECK_INTERVAL:
@@ -254,42 +296,139 @@ func _process(delta: float) -> void:
 	# HUD
 	hud.update_display()
 
+# --- AWACS message system ---
+
+func awacs_message(text: String, duration: float = 4.0) -> void:
+	_awacs_queue.append({"text": text, "duration": duration})
+
+func _update_awacs(delta: float) -> void:
+	if _awacs_current.size() > 0:
+		_awacs_timer -= delta
+		if _awacs_timer <= 0.0:
+			_awacs_current = {}
+	if _awacs_current.size() == 0 and _awacs_queue.size() > 0:
+		_awacs_current = _awacs_queue.pop_front()
+		_awacs_timer = _awacs_current.get("duration", 4.0)
+
+# --- Tutorial ---
+
+func _update_tutorial(delta: float) -> void:
+	_tutorial_timer += delta
+
+	match _tutorial_step:
+		TutorialStep.INTRO:
+			if _tutorial_timer >= 2.0:
+				awacs_message("BANDIT APPROACHING. STANDBY.", 4.0)
+				_spawn_tutorial_enemy(1, true, 150.0)  # 1 missile, tutorial mode, tanky
+				_tutorial_step = TutorialStep.WAIT_FLARE
+				_tutorial_timer = 0.0
+
+		TutorialStep.WAIT_FLARE:
+			# Check for incoming missiles to show flare hint
+			if not _tutorial_missile_warned:
+				var missiles := get_tree().get_nodes_in_group("enemy_projectile")
+				if missiles.size() > 0:
+					awacs_message("MISSILE INBOUND! DEPLOY FLARE [F]", 5.0)
+					_tutorial_missile_warned = true
+
+			# When enemy 1 is dead, move to gun phase
+			if _tutorial_enemy_1_dead and not _tutorial_enemy_2_spawned:
+				awacs_message("SPLASH ONE. USE GUN [G] ON NEXT TARGET.", 5.0)
+				_tutorial_step = TutorialStep.WAIT_KILL_GUN
+				_tutorial_timer = 0.0
+
+		TutorialStep.WAIT_KILL_GUN:
+			if _tutorial_timer >= 2.0 and not _tutorial_enemy_2_spawned:
+				_spawn_tutorial_enemy(0, true)  # 0 missiles, passive
+				_tutorial_enemy_2_spawned = true
+
+			# When all tutorial enemies dead
+			if _tutorial_enemy_2_spawned and enemy_container.get_child_count() == 0:
+				awacs_message("ALL HOSTILES DOWN. COMBAT BEGINS.", 3.0)
+				_tutorial_step = TutorialStep.DONE
+				_tutorial_timer = 0.0
+
+		TutorialStep.DONE:
+			if _tutorial_timer >= 3.0:
+				_phase = GamePhase.COMBAT
+				_current_wave = 0
+				_wave_spawned = false
+
+func _spawn_tutorial_enemy(missiles: int, tutorial: bool, hp_override: float = 0.0) -> void:
+	if not enemy_scene or not is_instance_valid(player):
+		return
+	# Spawn closer so the enemy reaches firing range quickly
+	var angle := randf() * TAU
+	var dist := randf_range(2500.0, 3500.0)
+	var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-30, 30), sin(angle) * dist)
+
+	var enemy: Area3D = enemy_scene.instantiate()
+	enemy.target = player
+	enemy.configure(enemy.EnemyType.BASIC, 0.5)
+	enemy.tutorial_mode = tutorial
+	enemy._missiles_remaining = missiles
+	# Override HP so the enemy survives long enough to fire
+	if hp_override > 0.0:
+		enemy.max_hp = hp_override
+		enemy.hp = hp_override
+
+	var to_player := player.global_position - spawn_pos
+	to_player.y = 0.0
+	enemy._heading = atan2(to_player.x, -to_player.z)
+
+	enemy.enemy_died.connect(_on_enemy_died)
+	enemy.enemy_died.connect(_on_tutorial_enemy_died)
+	enemy_container.add_child(enemy)
+	enemy.global_position = spawn_pos
+
+func _on_tutorial_enemy_died(_pos: Vector3, _xp_value: int) -> void:
+	if _phase == GamePhase.TUTORIAL and _tutorial_step == TutorialStep.WAIT_FLARE:
+		_tutorial_enemy_1_dead = true
+
 # --- Spawning ---
 
-func _spawn_wave(wave_index: int) -> void:
+func _spawn_wave_from_config(wave_index: int) -> void:
 	if not enemy_scene or not is_instance_valid(player):
 		return
 
-	var count: int = WAVES[wave_index]
-	var difficulty_mult: float = 1.0 + wave_index * 0.2
+	var config: Dictionary = WAVE_CONFIG[wave_index]
+	var difficulty_mult: float = 1.0 + wave_index * 0.15
 
-	for i in count:
-		var angle := randf() * TAU
-		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
-		var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
+	# AWACS messages for wave start
+	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)
 
-		var enemy: Area3D = enemy_scene.instantiate()
-		enemy.target = player
+	# Special warnings for new enemy types
+	if wave_index == 2:
+		awacs_message("WARNING -- FAST MOVERS DETECTED", 3.0)
+	elif wave_index == 3:
+		awacs_message("MULTIPLE CONTACTS. SWARM FORMATION.", 3.0)
 
-		# Wave 1: all BASIC, Wave 2: mix in FAST and SWARM
-		if wave_index >= 1:
-			var type_roll := randf()
-			if type_roll < 0.3:
-				enemy.configure(enemy.EnemyType.FAST, difficulty_mult)
-			elif type_roll < 0.5:
-				enemy.configure(enemy.EnemyType.SWARM, difficulty_mult)
-			else:
-				enemy.configure(enemy.EnemyType.BASIC, difficulty_mult)
-		else:
-			enemy.configure(enemy.EnemyType.BASIC, difficulty_mult)
+	# EnemyType enum mapping
+	var type_map := {
+		"BASIC": 0,  # EnemyType.BASIC
+		"FAST": 1,   # EnemyType.FAST
+		"SWARM": 3,  # EnemyType.SWARM
+	}
 
-		var to_player := player.global_position - spawn_pos
-		to_player.y = 0.0
-		enemy._heading = atan2(to_player.x, -to_player.z)
+	for type_name in config:
+		var count: int = config[type_name]
+		var enemy_type_val: int = type_map.get(type_name, 0)
+		for i in count:
+			var angle := randf() * TAU
+			var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
+			var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
 
-		enemy.enemy_died.connect(_on_enemy_died)
-		enemy_container.add_child(enemy)
-		enemy.global_position = spawn_pos
+			var enemy: Area3D = enemy_scene.instantiate()
+			enemy.target = player
+			enemy.configure(enemy_type_val, difficulty_mult)
+
+			var to_player := player.global_position - spawn_pos
+			to_player.y = 0.0
+			enemy._heading = atan2(to_player.x, -to_player.z)
+
+			enemy.enemy_died.connect(_on_enemy_died)
+			enemy_container.add_child(enemy)
+			enemy.global_position = spawn_pos
 
 # --- Enemy death ---
 

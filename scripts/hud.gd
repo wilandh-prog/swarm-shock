@@ -312,6 +312,18 @@ func _is_upgrade_taken(id: String) -> bool:
 func _mark_upgrade_taken(id: String) -> void:
 	_taken_upgrades.append(id)
 
+# --- AWACS radio ---
+
+func set_awacs_message(text: String) -> void:
+	if fighter_hud:
+		fighter_hud.awacs_text = text
+		fighter_hud._awacs_alpha = 1.0
+
+func set_wave_info(current: int, total: int) -> void:
+	if fighter_hud:
+		fighter_hud.wave_current = current
+		fighter_hud.wave_total = total
+
 # --- Landing guidance ---
 
 func start_landing_guidance(carrier: Node3D, heading: float, deck_y: float) -> void:

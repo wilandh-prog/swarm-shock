@@ -17,6 +17,10 @@ var xp_value: int = 1
 var volt_chance: float = 0.1
 var size_radius: float = 14.0
 
+# Tutorial mode (slower, less aggressive)
+var tutorial_mode: bool = false
+var _difficulty: float = 1.0
+
 # State
 var target: Node3D = null
 var _flash_timer: float = 0.0
@@ -121,6 +125,7 @@ func _ready() -> void:
 
 func configure(type: EnemyType, difficulty_mult: float = 1.0) -> void:
 	enemy_type = type
+	_difficulty = difficulty_mult
 	_apply_type_config()
 	max_hp *= difficulty_mult
 	hp = max_hp
@@ -347,6 +352,11 @@ func _process(delta: float) -> void:
 
 	_spawn_time += delta
 
+	# Tutorial mode multipliers
+	var spd_mult: float = 0.6 if tutorial_mode else 1.0
+	var turn_mult: float = 0.5 if tutorial_mode else 1.0
+	var lock_time: float = 2.0 if tutorial_mode else LOCK_TIME
+
 	# --- Combat AI ---
 	_fire_cooldown -= delta
 	_gun_cooldown -= delta
@@ -364,16 +374,16 @@ func _process(delta: float) -> void:
 				var angle_diff: float = angle_difference(_heading, desired_heading)
 				var turn_input: float = clampf(angle_diff / (PI * 0.25), -1.0, 1.0)
 				if absf(turn_input) > 0.05:
-					_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate, TURN_ACCEL * delta)
+					_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate * turn_mult, TURN_ACCEL * delta)
 				else:
 					_turn_speed = move_toward(_turn_speed, 0.0, TURN_ACCEL * delta)
 
-				# Missile lock-on: hold target in cone for LOCK_TIME, then fire
+				# Missile lock-on: hold target in cone for lock_time, then fire
 				if dist_to_target < FIRE_RANGE and _fire_cooldown <= 0.0 and _missiles_remaining > 0:
 					var dot: float = fwd.dot(to_target.normalized())
 					if dot > FIRE_CONE:
 						_lock_timer += delta
-						if _lock_timer >= LOCK_TIME:
+						if _lock_timer >= lock_time:
 							_lock_timer = 0.0
 							_ai_state = AIState.FIRE
 					else:
@@ -401,7 +411,7 @@ func _process(delta: float) -> void:
 				var turn_input: float = clampf(angle_diff / (PI * 0.25), -1.0, 1.0)
 				turn_input += _break_direction * 0.5
 				turn_input = clampf(turn_input, -1.0, 1.0)
-				_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate * 1.5, TURN_ACCEL * 2.0 * delta)
+				_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate * turn_mult * 1.5, TURN_ACCEL * 2.0 * delta)
 
 				_break_timer -= delta
 				if _break_timer <= 0.0:
@@ -412,7 +422,7 @@ func _process(delta: float) -> void:
 				var desired_heading: float = atan2(to_target.x, -to_target.z)
 				var angle_diff: float = angle_difference(_heading, desired_heading)
 				var turn_input: float = clampf(angle_diff / (PI * 0.25), -1.0, 1.0)
-				_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate, TURN_ACCEL * delta)
+				_turn_speed = move_toward(_turn_speed, turn_input * _turn_rate * turn_mult, TURN_ACCEL * delta)
 
 				if _gun_cooldown <= 0.0 and _burst_remaining > 0:
 					_fire_gun_at_target()
@@ -431,9 +441,9 @@ func _process(delta: float) -> void:
 
 	# Always fly forward
 	var forward := Vector3(sin(_heading), 0.0, -cos(_heading))
-	global_position += forward * speed * delta
+	global_position += forward * speed * spd_mult * delta
 	if target and is_instance_valid(target):
-		global_position.y = move_toward(global_position.y, target.global_position.y, speed * delta * 0.5)
+		global_position.y = move_toward(global_position.y, target.global_position.y, speed * spd_mult * delta * 0.5)
 
 	# Banking — same as player
 	var target_bank: float = -(_turn_speed / _turn_rate) * MAX_BANK_ANGLE
@@ -527,9 +537,11 @@ func _fire_missile_at_target() -> void:
 	var proj: Area3D = proj_scene.instantiate()
 	# Enemy missiles: red, slightly slower, aimed at player
 	proj.is_enemy_missile = true
-	proj.setup(dir, ENEMY_MISSILE_DAMAGE, ENEMY_MISSILE_SPEED)
+	var missile_spd: float = ENEMY_MISSILE_SPEED * (0.5 if tutorial_mode else 1.0)
+	proj.setup(dir, ENEMY_MISSILE_DAMAGE, missile_spd)
 	proj.homing_target = target
-	proj.homing_turn_rate = 1.4
+	# Homing scales with difficulty: 0.5→0.4, 1.0→0.7, 1.6→1.3
+	proj.homing_turn_rate = 0.4 if tutorial_mode else lerpf(0.7, 1.4, clampf((_difficulty - 1.0) / 0.6, 0.0, 1.0))
 	get_tree().current_scene.call_deferred("add_child", proj)
 	proj.set_deferred("global_position", global_position)
 

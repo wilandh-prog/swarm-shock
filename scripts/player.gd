@@ -439,11 +439,10 @@ func _physics_process(delta: float) -> void:
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
 	var f_pressed: bool = Input.is_key_pressed(KEY_F)
 	if f_pressed and not _flare_key_was_pressed and _flare_cooldown <= 0.0:
-		if not get_tree().get_nodes_in_group("enemy_projectile").is_empty():
-			_deploy_flare()
-			_flare_cooldown = FLARE_COOLDOWN
-			if _flare_sound_player:
-				_flare_sound_player.play()
+		_deploy_flare()
+		_flare_cooldown = FLARE_COOLDOWN
+		if _flare_sound_player:
+			_flare_sound_player.play()
 	_flare_key_was_pressed = f_pressed
 
 	# Invincibility
