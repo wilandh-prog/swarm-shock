@@ -19,6 +19,7 @@ var awacs_text: String = ""
 var _awacs_alpha: float = 0.0
 var wave_current: int = 0
 var wave_total: int = 0
+var speed_display_divisor: float = 1.0
 
 # Landing guidance
 var landing_active: bool = false
@@ -126,8 +127,8 @@ func _draw_speed_tape(ss: Vector2) -> void:
 	draw_rect(Rect2(x - 50, cy - half_h, 78, half_h * 2.0), HUD_BG)
 	draw_line(Vector2(x + 28, cy - half_h), Vector2(x + 28, cy + half_h), HUD_GREEN, 1.0)
 
-	# Speed in knots (game speed × 2.5 so cruise ~500kt)
-	var spd: float = _smooth_speed * 2.5
+	# Speed in knots (game speed × 2.5 so cruise ~500kt), adjusted for landing boost
+	var spd: float = _smooth_speed / speed_display_divisor * 2.5
 	var ppu: float = 4.0
 	var base: int = int(floor(spd))
 	var frac: float = spd - float(base)
@@ -640,8 +641,8 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 		commands.append({"text": "SPD OK %dKT" % knots, "color": HUD_GREEN})
 
 	# --- Altitude / glideslope ---
-	# Steeper gradient (0.25) so player descends to deck level over the approach
-	var ideal_alt: float = landing_deck_y + dist_horiz * 0.25
+	# Shallow gradient so player must descend early in the approach
+	var ideal_alt: float = landing_deck_y + dist_horiz * 0.12
 	ideal_alt = maxf(ideal_alt, landing_deck_y + 10.0)
 	var alt_error: float = player.global_position.y - ideal_alt
 	if alt_error > 200.0:

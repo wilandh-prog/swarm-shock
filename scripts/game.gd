@@ -579,6 +579,13 @@ func _begin_landing_sequence() -> void:
 	_landing_offset_base = Vector2(player.global_position.x, player.global_position.z)
 	player.landing_mode = true
 
+	# Boost actual speed for dramatic approach feel, but keep HUD numbers the same
+	const LANDING_SPEED_BOOST: float = 2.5
+	player.move_speed *= LANDING_SPEED_BOOST
+	player._current_speed *= LANDING_SPEED_BOOST
+	if hud.fighter_hud:
+		hud.fighter_hud.speed_display_divisor = LANDING_SPEED_BOOST
+
 	# Position carrier 8000 units ahead
 	var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
 	var carrier_pos := player.global_position + forward * 8000.0
