@@ -20,6 +20,7 @@ var _awacs_alpha: float = 0.0
 var wave_current: int = 0
 var wave_total: int = 0
 var speed_display_divisor: float = 1.0
+var mission_label: String = ""
 
 # Landing guidance
 var landing_active: bool = false
@@ -127,8 +128,9 @@ func _draw_speed_tape(ss: Vector2) -> void:
 	draw_rect(Rect2(x - 50, cy - half_h, 78, half_h * 2.0), HUD_BG)
 	draw_line(Vector2(x + 28, cy - half_h), Vector2(x + 28, cy + half_h), HUD_GREEN, 1.0)
 
-	# Speed in knots (game speed × 2.5 so cruise ~500kt), adjusted for landing boost
-	var spd: float = _smooth_speed / speed_display_divisor * 2.5
+	# Speed in knots (game speed × 2.5 so cruise ~500kt), divided by 3 in mission 2
+	var divisor: float = 3.0 if mission_label != "" else speed_display_divisor
+	var spd: float = _smooth_speed / divisor * 2.5
 	var ppu: float = 4.0
 	var base: int = int(floor(spd))
 	var frac: float = spd - float(base)
@@ -297,7 +299,7 @@ func _draw_gun_aimpoint(ss: Vector2) -> void:
 	var best_enemy: Node3D = null
 	var best_dist: float = 2500.0
 
-	for enemy in get_tree().get_nodes_in_group("enemy"):
+	for enemy in GameManager.enemies_alive:
 		if not is_instance_valid(enemy):
 			continue
 		var d: float = player.global_position.distance_to(enemy.global_position)
@@ -400,7 +402,7 @@ const WARN_RED := Color(1.0, 0.15, 0.1, 0.95)
 const WARN_RED_DIM := Color(1.0, 0.15, 0.1, 0.5)
 
 func _draw_missile_warning(ss: Vector2) -> void:
-	var missiles := get_tree().get_nodes_in_group("enemy_projectile")
+	var missiles := GameManager.enemy_missiles
 	if missiles.is_empty():
 		return
 
@@ -474,7 +476,9 @@ func _draw_flare_status(ss: Vector2) -> void:
 # --- Radar (bottom-left) ---
 
 const RADAR_RADIUS: float = 70.0
-const RADAR_RANGE: float = 3000.0
+const RADAR_RANGE_DEFAULT: float = 3000.0
+const RADAR_RANGE_MISSION2: float = 25000.0
+var radar_range: float = RADAR_RANGE_DEFAULT
 
 func _draw_radar(ss: Vector2) -> void:
 	var cx: float = 90.0
@@ -500,21 +504,30 @@ func _draw_radar(ss: Vector2) -> void:
 	var hdg: float = player._heading
 
 	# Enemy blips (rotated by heading so forward = up)
-	var enemies := get_tree().get_nodes_in_group("enemy")
+	var enemies := GameManager.enemies_alive
 	for enemy in enemies:
 		if not is_instance_valid(enemy):
 			continue
 		var rel: Vector3 = enemy.global_position - player.global_position
 		var dist: float = Vector2(rel.x, rel.z).length()
-		if dist > RADAR_RANGE:
+		if dist > radar_range:
 			continue
 		var blip := _radar_blip(rel, hdg, cx, cy)
 		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
 			continue
-		draw_rect(Rect2(blip.x - 2, blip.y - 2, 4, 4), WARN_RED)
+		# Ships get larger diamond blips
+		var is_ship: bool = enemy.has_method("get_contact_damage") and enemy.get_contact_damage() == 0.0
+		if is_ship:
+			var s: float = 5.0
+			draw_line(Vector2(blip.x, blip.y - s), Vector2(blip.x + s, blip.y), WARN_RED, 2.0)
+			draw_line(Vector2(blip.x + s, blip.y), Vector2(blip.x, blip.y + s), WARN_RED, 2.0)
+			draw_line(Vector2(blip.x, blip.y + s), Vector2(blip.x - s, blip.y), WARN_RED, 2.0)
+			draw_line(Vector2(blip.x - s, blip.y), Vector2(blip.x, blip.y - s), WARN_RED, 2.0)
+		else:
+			draw_rect(Rect2(blip.x - 2, blip.y - 2, 4, 4), WARN_RED)
 
 	# Incoming missiles
-	var missiles := get_tree().get_nodes_in_group("enemy_projectile")
+	var missiles := GameManager.enemy_missiles
 	for m in missiles:
 		if not is_instance_valid(m):
 			continue
@@ -571,9 +584,17 @@ func _draw_wave_indicator(ss: Vector2) -> void:
 		return
 	var x: float = ss.x - 130.0
 	var y: float = 30.0
+
+	# Mission label above wave counter
+	if mission_label != "":
+		draw_string(font, Vector2(x, y), mission_label, HORIZONTAL_ALIGNMENT_RIGHT, 120, 12, HUD_GREEN_DIM)
+		y += 18.0
+
 	var text: String
 	if wave_total <= 0:
 		text = "TUTORIAL"
+	elif mission_label != "":
+		text = "SHIP %d/%d" % [wave_current, wave_total]
 	else:
 		text = "WAVE %d/%d" % [wave_current, wave_total]
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, HUD_GREEN_DIM)
@@ -747,7 +768,7 @@ func _radar_blip(rel: Vector3, hdg: float, cx: float, cy: float) -> Vector2:
 	var c: float = cos(-hdg)
 	var rx: float = rel.x * c - rel.z * s
 	var ry: float = rel.x * s + rel.z * c
-	return Vector2(cx + rx / RADAR_RANGE * RADAR_RADIUS, cy + ry / RADAR_RANGE * RADAR_RADIUS)
+	return Vector2(cx + rx / radar_range * RADAR_RADIUS, cy + ry / radar_range * RADAR_RADIUS)
 
 func _rot(p: Vector2, cx: float, cy: float, angle: float) -> Vector2:
 	var o := p - Vector2(cx, cy)

@@ -72,6 +72,12 @@ var _is_flashing: bool = false
 
 # Shared resources (static — shared across all enemies)
 static var _flash_mat_cached: StandardMaterial3D
+static var _proj_scene_cached: PackedScene
+static var _dmg_num_script_cached: GDScript
+static var _shadow_mat_cached: StandardMaterial3D
+static var _hp_bg_mat_cached: StandardMaterial3D
+static var _hp_fill_mat_cached: StandardMaterial3D
+
 
 # Type configs
 const TYPE_CONFIG := {
@@ -111,6 +117,7 @@ const TYPE_CONFIG := {
 
 func _ready() -> void:
 	add_to_group("enemy")
+	GameManager.register_enemy(self)
 	collision_layer = 4
 	collision_mask = 8
 	monitoring = true
@@ -169,12 +176,13 @@ func _setup_visuals() -> void:
 	var shadow_mesh := PlaneMesh.new()
 	shadow_mesh.size = Vector2(24.0, 24.0)
 	_shadow.mesh = shadow_mesh
-	var shadow_mat := StandardMaterial3D.new()
-	shadow_mat.albedo_color = Color(0, 0, 0, 0.35)
-	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	shadow_mat.no_depth_test = true
-	_shadow.material_override = shadow_mat
+	if not _shadow_mat_cached:
+		_shadow_mat_cached = StandardMaterial3D.new()
+		_shadow_mat_cached.albedo_color = Color(0, 0, 0, 0.35)
+		_shadow_mat_cached.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_shadow_mat_cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_shadow_mat_cached.no_depth_test = true
+	_shadow.material_override = _shadow_mat_cached
 	_shadow.position.y = 1.0
 	add_child(_shadow)
 
@@ -315,6 +323,18 @@ func _update_model_for_type() -> void:
 		_load_model()
 
 func _setup_hp_bar() -> void:
+	if not _hp_bg_mat_cached:
+		_hp_bg_mat_cached = StandardMaterial3D.new()
+		_hp_bg_mat_cached.albedo_color = Color(0.2, 0.2, 0.2, 0.6)
+		_hp_bg_mat_cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_hp_bg_mat_cached.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_hp_bg_mat_cached.no_depth_test = true
+	if not _hp_fill_mat_cached:
+		_hp_fill_mat_cached = StandardMaterial3D.new()
+		_hp_fill_mat_cached.albedo_color = Color(1.0, 0.3, 0.3)
+		_hp_fill_mat_cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_hp_fill_mat_cached.no_depth_test = true
+
 	# Background
 	_hp_bg = MeshInstance3D.new()
 	var bg_mesh := QuadMesh.new()
@@ -322,12 +342,7 @@ func _setup_hp_bar() -> void:
 	_hp_bg.mesh = bg_mesh
 	_hp_bg.position = Vector3(0, 25.0, -size_radius - 8.0)
 	_hp_bg.rotation_degrees = Vector3(-90, 0, 0)
-	var bg_mat := StandardMaterial3D.new()
-	bg_mat.albedo_color = Color(0.2, 0.2, 0.2, 0.6)
-	bg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bg_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bg_mat.no_depth_test = true
-	_hp_bg.material_override = bg_mat
+	_hp_bg.material_override = _hp_bg_mat_cached
 	_hp_bg.visible = false
 	add_child(_hp_bg)
 
@@ -338,11 +353,7 @@ func _setup_hp_bar() -> void:
 	_hp_fill.mesh = fill_mesh
 	_hp_fill.position = Vector3(0, 25.0, -size_radius - 8.0)
 	_hp_fill.rotation_degrees = Vector3(-90, 0, 0)
-	var fill_mat := StandardMaterial3D.new()
-	fill_mat.albedo_color = Color(1.0, 0.3, 0.3)
-	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fill_mat.no_depth_test = true
-	_hp_fill.material_override = fill_mat
+	_hp_fill.material_override = _hp_fill_mat_cached
 	_hp_fill.visible = false
 	add_child(_hp_fill)
 
@@ -531,10 +542,11 @@ func _fire_missile_at_target() -> void:
 		return
 	dir = dir.normalized()
 
-	var proj_scene: PackedScene = load("res://scenes/entities/projectile.tscn")
-	if not proj_scene:
+	if not _proj_scene_cached:
+		_proj_scene_cached = load("res://scenes/entities/projectile.tscn")
+	if not _proj_scene_cached:
 		return
-	var proj: Area3D = proj_scene.instantiate()
+	var proj: Area3D = _proj_scene_cached.instantiate()
 	# Enemy missiles: red, slightly slower, aimed at player
 	proj.is_enemy_missile = true
 	var missile_spd: float = ENEMY_MISSILE_SPEED * (0.5 if tutorial_mode else 1.0)
@@ -557,10 +569,11 @@ func _fire_gun_at_target() -> void:
 	var spread_rad: float = deg_to_rad(8.0)
 	dir = dir.rotated(Vector3.UP, randf_range(-spread_rad, spread_rad))
 
-	var proj_scene: PackedScene = load("res://scenes/entities/projectile.tscn")
-	if not proj_scene:
+	if not _proj_scene_cached:
+		_proj_scene_cached = load("res://scenes/entities/projectile.tscn")
+	if not _proj_scene_cached:
 		return
-	var proj: Area3D = proj_scene.instantiate()
+	var proj: Area3D = _proj_scene_cached.instantiate()
 	proj.is_bullet = true
 	proj.is_enemy_missile = true
 	proj.lifetime = 2.0
@@ -579,9 +592,10 @@ func take_damage(amount: float) -> void:
 	_hit_scale = 1.3
 
 	# Spawn damage number
-	var dmg_num_script := load("res://scripts/damage_number.gd")
+	if not _dmg_num_script_cached:
+		_dmg_num_script_cached = load("res://scripts/damage_number.gd")
 	var dmg_num := Node3D.new()
-	dmg_num.set_script(dmg_num_script)
+	dmg_num.set_script(_dmg_num_script_cached)
 	dmg_num.setup(int(amount), global_position, Color(1.0, 0.8, 0.3))
 	get_tree().current_scene.add_child(dmg_num)
 

@@ -104,7 +104,7 @@ func _update_lock_on(delta: float) -> void:
 	var best_target: Node3D = null
 	var best_dot: float = LOCK_CONE
 
-	for enemy in get_tree().get_nodes_in_group("enemy"):
+	for enemy in GameManager.enemies_alive:
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector3 = enemy.global_position - player.global_position
@@ -159,7 +159,7 @@ func _fire_gun() -> void:
 	# Auto-aim: find closest enemy in a wide cone and lead-target it
 	var best_enemy: Node3D = null
 	var best_dot: float = 0.3  # ~72° cone
-	for enemy in player.get_tree().get_nodes_in_group("enemy"):
+	for enemy in GameManager.enemies_alive:
 		if not is_instance_valid(enemy):
 			continue
 		var to_enemy: Vector3 = enemy.global_position - player.global_position

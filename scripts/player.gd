@@ -541,8 +541,7 @@ func _update_visuals(delta: float) -> void:
 
 	# Incoming missile warning
 	if _incoming_sound_player:
-		var enemy_missiles := get_tree().get_nodes_in_group("enemy_projectile")
-		var has_incoming: bool = not enemy_missiles.is_empty()
+		var has_incoming: bool = not GameManager.enemy_missiles.is_empty()
 		if has_incoming and not _incoming_sound_playing:
 			_incoming_sound_player.play()
 			_incoming_sound_playing = true
@@ -621,7 +620,7 @@ func _deploy_flare() -> void:
 	flare.set_deferred("global_position", global_position)
 
 func get_nearest_enemy() -> Node3D:
-	var enemies := get_tree().get_nodes_in_group("enemy")
+	var enemies := GameManager.enemies_alive
 	var nearest: Node3D = null
 	var nearest_dist: float = INF
 	for enemy in enemies:

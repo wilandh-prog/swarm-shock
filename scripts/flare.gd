@@ -6,6 +6,7 @@ var _velocity: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	add_to_group("flare")
+	GameManager.register_flare(self)
 	collision_layer = 0
 	collision_mask = 0
 	_build_visual()

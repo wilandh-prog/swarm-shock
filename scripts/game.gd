@@ -79,20 +79,31 @@ var _splash_sound: AudioStreamPlayer
 var _carrier: Node3D
 
 # Landing sequence
-enum GamePhase { TUTORIAL, COMBAT, LANDING_APPROACH, LANDED }
+enum GamePhase { TUTORIAL, COMBAT, LANDING_APPROACH, LANDED, MISSION_2_LAUNCH, MISSION_2_COMBAT }
 var _phase: GamePhase = GamePhase.TUTORIAL
+var _mission: int = 1
 var _carrier_heading: float = 0.0
 var _carrier_mesh_y: float = 150.0   # carrier mesh origin
 var _carrier_deck_y: float = 70.0    # just above visual deck (deck at ~53)
 var _landing_timer: float = 0.0
 var _scroll_blend: float = 1.0          # 1.0 = fast arcade scroll, 0.0 = world-correct
 var _landing_offset_base: Vector2       # player pos when landing started
+var _original_move_speed: float = 0.0   # saved before landing boost
 const LANDING_ZONE_RADIUS: float = 900.0  # carrier is ~2000 units long at scale 500
 const LANDING_ALT_THRESHOLD: float = 30.0  # must be close to deck level
 const LANDING_SPEED_FACTOR: float = 0.65  # must brake to 65% of cruise speed
 const LANDING_HEADING_TOL: float = 0.35  # ~20 degrees
 const LANDING_FAIL_DIST: float = 400.0   # must be aligned when this close
 const LANDING_FAIL_ALT: float = 80.0     # altitude window for fail check
+
+# Mission 2 — convoy
+var _ships_total: int = 0
+var _convoy_heading: float = 0.0
+var _m2_ships_warned: bool = false
+const CONVOY_SHIP_COUNT: int = 4
+const CONVOY_SPEED: float = 60.0
+const CONVOY_SPACING: float = 800.0
+const CONVOY_LATERAL: float = 300.0
 
 
 func _ready() -> void:
@@ -224,13 +235,14 @@ func _process(delta: float) -> void:
 	var target_fov: float = 60.0 + speed_ratio * 25.0  # 60° slow, 85° at cruise, 110° at boost
 	camera.fov = lerpf(camera.fov, target_fov, delta * 3.0)
 
-	# Background follows player so terrain never ends (but freezes during landing)
-	if _ground and _phase != GamePhase.LANDING_APPROACH and _phase != GamePhase.LANDED:
+	# Background follows player so terrain never ends
+	# Freezes during landing and all of mission 2 (ships move over static ocean)
+	var _ocean_frozen: bool = _phase in [GamePhase.LANDING_APPROACH, GamePhase.LANDED, GamePhase.MISSION_2_LAUNCH, GamePhase.MISSION_2_COMBAT]
+	if _ground and not _ocean_frozen:
 		_ground.global_position.x = player.global_position.x
 		_ground.global_position.z = player.global_position.z
 	if _bg_shader_mat:
-		if _phase == GamePhase.LANDING_APPROACH or _phase == GamePhase.LANDED:
-			# Freeze offset so ocean pattern is fixed in world space — carrier stays pinned
+		if _ocean_frozen:
 			_bg_shader_mat.set_shader_parameter("time_val", _game_time)
 		else:
 			var pp := Vector2(player.global_position.x, player.global_position.z)
@@ -266,6 +278,15 @@ func _process(delta: float) -> void:
 			awacs_message("ALL TARGETS DOWN. RTB -- CARRIER AHEAD.", 4.0)
 			_begin_landing_sequence()
 
+	elif _phase == GamePhase.MISSION_2_COMBAT:
+		var ships_left: int = enemy_container.get_child_count()
+		if ships_left <= 2 and ships_left > 0 and not _m2_ships_warned:
+			awacs_message("%d SHIP%s REMAINING." % [ships_left, "" if ships_left == 1 else "S"], 3.0)
+			_m2_ships_warned = true
+		if ships_left == 0:
+			awacs_message("ALL SHIPS DESTROYED. RTB.", 4.0)
+			_begin_landing_sequence()
+
 	# Landing approach update
 	if _phase == GamePhase.LANDING_APPROACH:
 		_update_landing(delta)
@@ -279,6 +300,9 @@ func _process(delta: float) -> void:
 		hud.set_wave_info(0, 0)
 	elif _phase == GamePhase.COMBAT:
 		hud.set_wave_info(mini(_current_wave + 1, WAVE_CONFIG.size()), WAVE_CONFIG.size())
+	elif _phase in [GamePhase.MISSION_2_LAUNCH, GamePhase.MISSION_2_COMBAT]:
+		var destroyed: int = _ships_total - enemy_container.get_child_count()
+		hud.set_wave_info(maxi(destroyed, 0), _ships_total)
 
 
 	# Pickup attraction
@@ -325,8 +349,7 @@ func _update_tutorial(delta: float) -> void:
 		TutorialStep.WAIT_FLARE:
 			# Check for incoming missiles to show flare hint
 			if not _tutorial_missile_warned:
-				var missiles := get_tree().get_nodes_in_group("enemy_projectile")
-				if missiles.size() > 0:
+				if GameManager.enemy_missiles.size() > 0:
 					awacs_message("MISSILE INBOUND! DEPLOY FLARE [F]", 5.0)
 					_tutorial_missile_warned = true
 
@@ -573,11 +596,16 @@ func _attract_nearby_pickups() -> void:
 # --- Landing sequence ---
 
 func _begin_landing_sequence() -> void:
+	if _phase == GamePhase.LANDING_APPROACH:
+		return  # already in landing
 	_phase = GamePhase.LANDING_APPROACH
 	_landing_timer = 0.0
 	_scroll_blend = 1.0
 	_landing_offset_base = Vector2(player.global_position.x, player.global_position.z)
 	player.landing_mode = true
+
+	# Save original speed before boost (for mission 2 restore)
+	_original_move_speed = player.move_speed
 
 	# Boost actual speed for dramatic approach feel, but keep HUD numbers the same
 	const LANDING_SPEED_BOOST: float = 2.5
@@ -586,21 +614,25 @@ func _begin_landing_sequence() -> void:
 	if hud.fighter_hud:
 		hud.fighter_hud.speed_display_divisor = LANDING_SPEED_BOOST
 
-	# Position carrier 8000 units ahead
-	var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
-	var carrier_pos := player.global_position + forward * 8000.0
-	carrier_pos.y = _carrier_mesh_y
-	_carrier.global_position = carrier_pos
-	_carrier.visible = true
+	if _mission == 1:
+		# Position carrier 8000 units ahead
+		var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
+		var carrier_pos := player.global_position + forward * 8000.0
+		carrier_pos.y = _carrier_mesh_y
+		_carrier.global_position = carrier_pos
+		_carrier.visible = true
 
-	# Align carrier: stern faces player (rotated 180°) so the angled deck
-	# approach comes from the aft end — one clear runway, no tower confusion
-	var look_target := _carrier.global_position + forward
-	_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
-	_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0) + PI)
-	_carrier_heading = player._heading
+		# Align carrier: stern faces player (rotated 180°) so the angled deck
+		# approach comes from the aft end — one clear runway, no tower confusion
+		var look_target := _carrier.global_position + forward
+		_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
+		_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0) + PI)
+		_carrier_heading = player._heading
+	# Mission 2: carrier already positioned from mission 1, just ensure visible
+	else:
+		_carrier.visible = true
 
-	print("=== LANDING SEQUENCE STARTED ===")
+	print("=== LANDING SEQUENCE STARTED (Mission %d) ===" % _mission)
 	print("Carrier pos: ", _carrier.global_position)
 	print("Player heading: ", rad_to_deg(player._heading))
 	print("Player speed: ", player._current_speed)
@@ -680,9 +712,118 @@ func _on_landing_success() -> void:
 
 	hud.stop_landing_guidance()
 
+	if _mission == 1:
+		await get_tree().create_timer(2.0).timeout
+		_begin_mission_2()
+	else:
+		await get_tree().create_timer(1.5).timeout
+		GameManager.end_run()
+		hud.show_victory()
+
+# --- Mission 2 — Convoy intercept ---
+
+func _begin_mission_2() -> void:
+	_mission = 2
+	_phase = GamePhase.MISSION_2_LAUNCH
+
+	# Restore player speed (undo landing boost); fallback if skipped via debug key
+	if _original_move_speed > 0.0:
+		player.move_speed = _original_move_speed
+	else:
+		_original_move_speed = player.move_speed
+	player._current_speed = 0.0
+	if hud.fighter_hud:
+		hud.fighter_hud.speed_display_divisor = 1.0
+		hud.fighter_hud.mission_label = "MISSION 2"
+		hud.fighter_hud.radar_range = hud.fighter_hud.RADAR_RANGE_MISSION2
+
+	# Place player on carrier deck
+	player.global_position = Vector3(
+		_carrier.global_position.x,
+		_carrier_deck_y + 15.0,
+		_carrier.global_position.z
+	)
+	player._heading = _carrier_heading
+	player.landing_mode = false
+	player.set_physics_process(false)
+
+	# Stop landing guidance from mission 1
+	hud.stop_landing_guidance()
+
+	# Freeze ocean for mission 2 (ships move over static ocean)
+	if _bg_shader_mat:
+		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
+
+	# Show briefing panel — launch button triggers catapult
+	hud.show_mission_briefing("MISSION 2: CONVOY INTERCEPT",
+		"Destroy all enemy missile cruisers.\nShips approaching from the north.\nUse missiles and gun to engage.",
+		_on_briefing_launch)
+
+func _on_briefing_launch() -> void:
+	awacs_message("MISSION 2 -- CONVOY INTERCEPT.", 4.0)
+	_catapult_launch()
+
+const MISSION_2_SPEED_MULT: float = 3.0
+
+func _catapult_launch() -> void:
+	_phase = GamePhase.MISSION_2_COMBAT
+	player.set_physics_process(true)
+
+	# 3x speed for mission 2, HUD shows original values
+	player.move_speed = _original_move_speed * MISSION_2_SPEED_MULT
+	player._current_speed = _original_move_speed * MISSION_2_SPEED_MULT * 2.0  # catapult boost on top
+	player._target_altitude = 800.0
+	if hud.fighter_hud:
+		hud.fighter_hud.speed_display_divisor = MISSION_2_SPEED_MULT
+		print("[M2] speed_display_divisor set to ", MISSION_2_SPEED_MULT, " move_speed=", player.move_speed, " current=", player._current_speed)
+	else:
+		print("[M2] WARNING: hud.fighter_hud is null!")
+
+	EffectsManager.screen_flash(Color(1.0, 0.9, 0.7), 0.3)
+	awacs_message("CATAPULT -- BRACE!", 2.0)
+
 	await get_tree().create_timer(1.5).timeout
-	GameManager.end_run()
-	hud.show_victory()
+	awacs_message("WEAPONS FREE. GOOD HUNTING.", 3.0)
+	_spawn_convoy()
+
+func _spawn_convoy() -> void:
+	var ship_script: GDScript = load("res://scripts/ship.gd")
+	if not ship_script:
+		print("[ERROR] Could not load ship.gd")
+		return
+
+	# Convoy approaches from the direction the carrier faces
+	# Carrier stern faces the player approach; ships come from the bow side
+	var away_dir := Vector3(sin(_carrier_heading), 0.0, -cos(_carrier_heading))
+	var base_spawn: Vector3 = _carrier.global_position + away_dir * 20000.0
+	base_spawn.y = 0.0
+
+	# Ships head toward carrier (opposite direction)
+	_convoy_heading = fposmod(_carrier_heading + PI, TAU)
+
+	_ships_total = CONVOY_SHIP_COUNT
+	_m2_ships_warned = false
+
+	# 2-column staggered formation
+	var perp := Vector3(-away_dir.z, 0.0, away_dir.x)
+	var positions: Array[Vector3] = []
+	for i in CONVOY_SHIP_COUNT:
+		var along: float = float(i) * CONVOY_SPACING
+		var lateral: float = CONVOY_LATERAL * (1.0 if i % 2 == 0 else -1.0)
+		positions.append(base_spawn + away_dir * along + perp * lateral)
+
+	for pos in positions:
+		var ship := Area3D.new()
+		ship.set_script(ship_script)
+		enemy_container.call_deferred("add_child", ship)
+		ship.set_deferred("global_position", Vector3(pos.x, -18.0, pos.z))
+		# configure after added to tree
+		ship.configure(_convoy_heading, 200.0)
+		ship.speed = CONVOY_SPEED
+		ship.target = player
+		ship.enemy_died.connect(_on_enemy_died)
+
+	awacs_message("%d HOSTILE SHIPS. ENGAGE." % CONVOY_SHIP_COUNT, 4.0)
 
 # --- Player events ---
 
@@ -717,3 +858,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			for e in enemy_container.get_children():
 				e.queue_free()
 			_begin_landing_sequence()
+	# DEBUG: press 2 to skip straight to mission 2
+	if event is InputEventKey and event.pressed and event.keycode == KEY_2:
+		if _phase == GamePhase.TUTORIAL or _phase == GamePhase.COMBAT:
+			for e in enemy_container.get_children():
+				e.queue_free()
+			# Position carrier since we skipped landing
+			var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
+			var carrier_pos := player.global_position + forward * 1000.0
+			carrier_pos.y = _carrier_mesh_y
+			_carrier.global_position = carrier_pos
+			_carrier.visible = true
+			var look_target := _carrier.global_position + forward
+			_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
+			_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0) + PI)
+			_carrier_heading = player._heading
+			# Freeze ocean
+			if _ground:
+				_ground.global_position.x = player.global_position.x
+				_ground.global_position.z = player.global_position.z
+			_begin_mission_2()

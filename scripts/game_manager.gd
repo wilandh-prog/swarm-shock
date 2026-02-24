@@ -25,6 +25,23 @@ var upgrade_levels: Dictionary = {
 }
 var selected_character: String = "spark"
 
+# --- Entity tracking (cached lists, avoids get_nodes_in_group every frame) ---
+var enemies_alive: Array[Area3D] = []
+var enemy_missiles: Array[Area3D] = []
+var flares_active: Array[Area3D] = []
+
+func register_enemy(e: Area3D) -> void:
+	enemies_alive.append(e)
+	e.tree_exiting.connect(func(): enemies_alive.erase(e))
+
+func register_enemy_missile(m: Area3D) -> void:
+	enemy_missiles.append(m)
+	m.tree_exiting.connect(func(): enemy_missiles.erase(m))
+
+func register_flare(f: Area3D) -> void:
+	flares_active.append(f)
+	f.tree_exiting.connect(func(): flares_active.erase(f))
+
 # --- Current run state ---
 var run_active: bool = false
 var run_time: float = 0.0

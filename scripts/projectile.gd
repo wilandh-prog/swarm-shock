@@ -15,9 +15,18 @@ var homing_turn_rate: float = 4.0
 var is_enemy_missile: bool = false
 var is_bullet: bool = false
 
+# Shared materials (static — created once, reused by all projectiles)
+static var _player_missile_mats: Dictionary = {}
+static var _enemy_missile_mats: Dictionary = {}
+static var _player_bullet_mat: StandardMaterial3D
+static var _enemy_bullet_mat: StandardMaterial3D
+static var _trail_mat_cached: StandardMaterial3D
+
+
 func _ready() -> void:
 	if is_enemy_missile:
 		add_to_group("enemy_projectile")
+		GameManager.register_enemy_missile(self)
 		collision_layer = 0
 	else:
 		add_to_group("projectile")
@@ -38,6 +47,59 @@ func setup(dir: Vector3, dmg: float, spd: float = 3000.0, _prc: int = 1, _col: C
 	speed = spd
 	_build_mesh()
 
+static func _init_missile_mats(enemy: bool) -> Dictionary:
+	var body_color: Color = Color(0.9, 0.2, 0.15) if enemy else Color(0.85, 0.88, 0.9)
+	var mats: Dictionary = {}
+	var body_mat := StandardMaterial3D.new()
+	body_mat.albedo_color = body_color
+	body_mat.emission_enabled = true
+	body_mat.emission = body_color
+	body_mat.emission_energy_multiplier = 2.0 if enemy else 1.5
+	body_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mats["body"] = body_mat
+	var nose_mat := StandardMaterial3D.new()
+	nose_mat.albedo_color = Color(0.9, 0.2, 0.15) if enemy else Color(0.7, 0.75, 0.8)
+	nose_mat.emission_enabled = true
+	nose_mat.emission = nose_mat.albedo_color
+	nose_mat.emission_energy_multiplier = 2.0
+	nose_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mats["nose"] = nose_mat
+	var fin_mat := StandardMaterial3D.new()
+	fin_mat.albedo_color = body_color.darkened(0.2)
+	fin_mat.emission_enabled = true
+	fin_mat.emission = fin_mat.albedo_color
+	fin_mat.emission_energy_multiplier = 1.0
+	fin_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mats["fin"] = fin_mat
+	var flame_mat := StandardMaterial3D.new()
+	flame_mat.albedo_color = Color(1.0, 0.7, 0.1)
+	flame_mat.emission_enabled = true
+	flame_mat.emission = Color(1.0, 0.5, 0.05)
+	flame_mat.emission_energy_multiplier = 6.0
+	flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mats["flame"] = flame_mat
+	return mats
+
+static func _init_bullet_mat(enemy: bool) -> StandardMaterial3D:
+	var bullet_color: Color = Color(1.0, 0.3, 0.15) if enemy else Color(1.0, 0.9, 0.3)
+	var emit_color: Color = Color(1.0, 0.2, 0.1) if enemy else Color(1.0, 0.8, 0.2)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = bullet_color
+	mat.emission_enabled = true
+	mat.emission = emit_color
+	mat.emission_energy_multiplier = 4.0
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return mat
+
+static func _get_trail_mat() -> StandardMaterial3D:
+	if not _trail_mat_cached:
+		_trail_mat_cached = StandardMaterial3D.new()
+		_trail_mat_cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_trail_mat_cached.vertex_color_use_as_albedo = true
+		_trail_mat_cached.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_trail_mat_cached.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	return _trail_mat_cached
+
 func _build_mesh() -> void:
 	_mesh_root = Node3D.new()
 
@@ -45,14 +107,16 @@ func _build_mesh() -> void:
 		_build_bullet_mesh()
 		return
 
-	# Missile body — red for enemy, white for player
-	var body_color: Color = Color(0.9, 0.2, 0.15) if is_enemy_missile else Color(0.85, 0.88, 0.9)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = body_color
-	mat.emission_enabled = true
-	mat.emission = body_color
-	mat.emission_energy_multiplier = 2.0 if is_enemy_missile else 1.5
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Get or create cached materials for this missile type
+	var mats: Dictionary
+	if is_enemy_missile:
+		if _enemy_missile_mats.is_empty():
+			_enemy_missile_mats = _init_missile_mats(true)
+		mats = _enemy_missile_mats
+	else:
+		if _player_missile_mats.is_empty():
+			_player_missile_mats = _init_missile_mats(false)
+		mats = _player_missile_mats
 
 	# Sidewinder-style: long body
 	var body := MeshInstance3D.new()
@@ -61,7 +125,7 @@ func _build_mesh() -> void:
 	body_mesh.bottom_radius = 2.5
 	body_mesh.height = 40.0
 	body_mesh.radial_segments = 8
-	body_mesh.material = mat
+	body_mesh.material = mats["body"]
 	body.mesh = body_mesh
 	_mesh_root.add_child(body)
 
@@ -72,29 +136,17 @@ func _build_mesh() -> void:
 	nose_mesh.bottom_radius = 2.0
 	nose_mesh.height = 8.0
 	nose_mesh.radial_segments = 8
-	var nose_mat := StandardMaterial3D.new()
-	nose_mat.albedo_color = Color(0.9, 0.2, 0.15) if is_enemy_missile else Color(0.7, 0.75, 0.8)
-	nose_mat.emission_enabled = true
-	nose_mat.emission = nose_mat.albedo_color
-	nose_mat.emission_energy_multiplier = 2.0
-	nose_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	nose_mesh.material = nose_mat
+	nose_mesh.material = mats["nose"]
 	nose.mesh = nose_mesh
 	nose.position.y = 24.0
 	_mesh_root.add_child(nose)
 
 	# Tail fins — 4 cross fins
-	var fin_mat := StandardMaterial3D.new()
-	fin_mat.albedo_color = body_color.darkened(0.2)
-	fin_mat.emission_enabled = true
-	fin_mat.emission = fin_mat.albedo_color
-	fin_mat.emission_energy_multiplier = 1.0
-	fin_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	for i in 4:
 		var fin := MeshInstance3D.new()
 		var fin_mesh := BoxMesh.new()
 		fin_mesh.size = Vector3(0.3, 6.0, 4.0)
-		fin_mesh.material = fin_mat
+		fin_mesh.material = mats["fin"]
 		fin.mesh = fin_mesh
 		fin.position.y = -17.0
 		fin.rotation.y = deg_to_rad(90.0 * i)
@@ -107,13 +159,7 @@ func _build_mesh() -> void:
 	flame_mesh.bottom_radius = 0.4
 	flame_mesh.height = 10.0
 	flame_mesh.radial_segments = 8
-	var flame_mat := StandardMaterial3D.new()
-	flame_mat.albedo_color = Color(1.0, 0.7, 0.1)
-	flame_mat.emission_enabled = true
-	flame_mat.emission = Color(1.0, 0.5, 0.05)
-	flame_mat.emission_energy_multiplier = 6.0
-	flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	flame_mesh.material = flame_mat
+	flame_mesh.material = mats["flame"]
 	flame.mesh = flame_mesh
 	flame.position.y = -25.0
 	_mesh_root.add_child(flame)
@@ -145,12 +191,7 @@ func _build_mesh() -> void:
 	trail_sphere.height = 2.0
 	trail_sphere.radial_segments = 4
 	trail_sphere.rings = 2
-	var trail_mat := StandardMaterial3D.new()
-	trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	trail_mat.vertex_color_use_as_albedo = true
-	trail_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	trail_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	trail_sphere.material = trail_mat
+	trail_sphere.material = _get_trail_mat()
 	trail.mesh = trail_sphere
 	trail.position.y = -25.0  # emit from exhaust
 	_mesh_root.add_child(trail)
@@ -159,15 +200,15 @@ func _build_mesh() -> void:
 	add_child(_mesh_root)
 
 func _build_bullet_mesh() -> void:
-	# Red/orange tracer for enemy, yellow for player
-	var bullet_color: Color = Color(1.0, 0.3, 0.15) if is_enemy_missile else Color(1.0, 0.9, 0.3)
-	var emit_color: Color = Color(1.0, 0.2, 0.1) if is_enemy_missile else Color(1.0, 0.8, 0.2)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = bullet_color
-	mat.emission_enabled = true
-	mat.emission = emit_color
-	mat.emission_energy_multiplier = 4.0
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var mat: StandardMaterial3D
+	if is_enemy_missile:
+		if not _enemy_bullet_mat:
+			_enemy_bullet_mat = _init_bullet_mat(true)
+		mat = _enemy_bullet_mat
+	else:
+		if not _player_bullet_mat:
+			_player_bullet_mat = _init_bullet_mat(false)
+		mat = _player_bullet_mat
 
 	var body := MeshInstance3D.new()
 	var mesh := CylinderMesh.new()
@@ -231,7 +272,7 @@ func _process(delta: float) -> void:
 
 
 func _check_flare_attract() -> void:
-	var flares := get_tree().get_nodes_in_group("flare")
+	var flares := GameManager.flares_active
 	for flare in flares:
 		if not is_instance_valid(flare):
 			continue
@@ -260,7 +301,7 @@ func _explode() -> void:
 
 	# AOE damage (player missiles only)
 	if not is_enemy_missile:
-		var enemies := get_tree().get_nodes_in_group("enemy")
+		var enemies := GameManager.enemies_alive
 		for enemy in enemies:
 			if not is_instance_valid(enemy):
 				continue
