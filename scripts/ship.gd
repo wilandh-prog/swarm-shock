@@ -30,6 +30,8 @@ var _model_instance: Node3D
 var _hp_bg: MeshInstance3D
 var _hp_fill: MeshInstance3D
 var _flash_timer: float = 0.0
+var _fires: Array[CPUParticles3D] = []
+const MAX_FIRES: int = 5
 
 # Shared resources
 static var _flash_mat_cached: StandardMaterial3D
@@ -186,6 +188,21 @@ func take_damage(amount: float) -> void:
 	_flash_timer = 0.08
 	_flash_hit()
 
+	# Impact explosion at hit point (random offset along ship)
+	var hit_offset := Vector3(
+		randf_range(-80.0, 80.0),
+		randf_range(50.0, 200.0),
+		randf_range(-500.0, 500.0)
+	)
+	var hit_pos: Vector3 = global_position + hit_offset
+	var impact := Particles.explosion(hit_pos, 60.0)
+	get_tree().current_scene.add_child(impact)
+
+	# Add persistent fire on the ship (more fires as HP drops)
+	var hp_ratio: float = hp / max_hp
+	if hp_ratio < 0.8 and _fires.size() < MAX_FIRES:
+		_spawn_fire(hit_offset)
+
 	# Spawn damage number
 	if not _dmg_num_script_cached:
 		_dmg_num_script_cached = load("res://scripts/damage_number.gd")
@@ -197,6 +214,98 @@ func take_damage(amount: float) -> void:
 	if hp <= 0.0:
 		_die()
 
+func _spawn_fire(offset: Vector3) -> void:
+	# Place fire well above the deck so it's visible
+	var fire_pos := Vector3(offset.x * 0.5, 250.0, offset.z)
+
+	# Fire material — additive blending, billboard
+	var fire_mat := StandardMaterial3D.new()
+	fire_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fire_mat.vertex_color_use_as_albedo = true
+	fire_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fire_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fire_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	fire_mat.no_depth_test = true
+	var fire_mesh := QuadMesh.new()
+	fire_mesh.size = Vector2(2.0, 2.0)
+	fire_mesh.material = fire_mat
+
+	var fire := CPUParticles3D.new()
+	fire.emitting = false
+	fire.amount = 25
+	fire.lifetime = 1.5
+	fire.explosiveness = 0.0
+	fire.randomness = 0.3
+	fire.direction = Vector3(0, 1, 0)
+	fire.spread = 35.0
+	fire.initial_velocity_min = 40.0
+	fire.initial_velocity_max = 120.0
+	fire.gravity = Vector3(0, 80, 0)
+	fire.damping_min = 10.0
+	fire.damping_max = 30.0
+	fire.scale_amount_min = 40.0
+	fire.scale_amount_max = 100.0
+	fire.scale_amount_curve = _create_fire_curve()
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 1.0, 0.7, 1.0))
+	grad.add_point(0.2, Color(1.0, 0.7, 0.2, 0.9))
+	grad.add_point(0.5, Color(1.0, 0.3, 0.05, 0.7))
+	grad.add_point(0.8, Color(0.3, 0.08, 0.02, 0.3))
+	grad.set_color(1, Color(0.1, 0.05, 0.02, 0.0))
+	fire.color_ramp = grad
+	fire.mesh = fire_mesh
+	fire.position = fire_pos
+	add_child(fire)
+	fire.set_deferred("emitting", true)
+	_fires.append(fire)
+
+	# Smoke column — use SphereMesh for 3D volume
+	var smoke_mat := StandardMaterial3D.new()
+	smoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smoke_mat.vertex_color_use_as_albedo = true
+	smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var smoke_mesh := SphereMesh.new()
+	smoke_mesh.radius = 1.0
+	smoke_mesh.height = 2.0
+	smoke_mesh.radial_segments = 8
+	smoke_mesh.rings = 4
+	smoke_mesh.material = smoke_mat
+
+	var smoke := CPUParticles3D.new()
+	smoke.emitting = false
+	smoke.amount = 15
+	smoke.lifetime = 3.0
+	smoke.explosiveness = 0.0
+	smoke.randomness = 0.4
+	smoke.direction = Vector3(0, 1, 0)
+	smoke.spread = 25.0
+	smoke.initial_velocity_min = 50.0
+	smoke.initial_velocity_max = 150.0
+	smoke.gravity = Vector3(0, 40, 0)
+	smoke.damping_min = 5.0
+	smoke.damping_max = 15.0
+	smoke.scale_amount_min = 50.0
+	smoke.scale_amount_max = 120.0
+	smoke.scale_amount_curve = _create_fire_curve()
+	var smoke_grad := Gradient.new()
+	smoke_grad.set_color(0, Color(0.12, 0.10, 0.08, 0.5))
+	smoke_grad.add_point(0.3, Color(0.10, 0.08, 0.06, 0.4))
+	smoke_grad.add_point(0.7, Color(0.13, 0.10, 0.08, 0.15))
+	smoke_grad.set_color(1, Color(0.15, 0.12, 0.10, 0.0))
+	smoke.color_ramp = smoke_grad
+	smoke.mesh = smoke_mesh
+	smoke.position = fire_pos + Vector3(0, 30, 0)
+	add_child(smoke)
+	smoke.set_deferred("emitting", true)
+
+static func _create_fire_curve() -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.3))
+	c.add_point(Vector2(0.2, 1.0))
+	c.add_point(Vector2(0.7, 0.6))
+	c.add_point(Vector2(1.0, 0.0))
+	return c
+
 func get_contact_damage() -> float:
 	return 0.0
 
@@ -206,8 +315,16 @@ func _die() -> void:
 	_is_dead = true
 	GameManager.add_kill()
 
-	var death_fx := Particles.enemy_death(global_position, Color(0.4, 0.4, 0.5), 80.0)
-	get_tree().current_scene.add_child(death_fx)
+	# Multiple explosions along the ship length for dramatic sinking
+	var scene_root: Node = get_tree().current_scene
+	var fwd := Vector3(sin(_heading), 0.0, -cos(_heading))
+	for i in 3:
+		var offset_along: float = (float(i) - 1.0) * 400.0
+		var boom_pos: Vector3 = global_position + fwd * offset_along + Vector3(0, randf_range(50, 150), 0)
+		var boom := Particles.explosion(boom_pos, 120.0)
+		scene_root.add_child(boom)
+	var death_fx := Particles.enemy_death(global_position + Vector3(0, 80, 0), Color(0.4, 0.4, 0.5), 120.0)
+	scene_root.add_child(death_fx)
 	EffectsManager.big_impact()
 
 	enemy_died.emit(global_position, xp_value)

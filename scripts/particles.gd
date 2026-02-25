@@ -2,6 +2,208 @@ class_name Particles
 ## Factory for creating various CPUParticles3D effects.
 ## All methods return a ready-to-add CPUParticles3D node.
 
+static var _fireball_shader: Shader
+static var _soft_circle: ImageTexture
+static var _smoke_mesh: Mesh
+static var _fire_quad: QuadMesh
+
+static func _get_fireball_shader() -> Shader:
+	if not _fireball_shader:
+		_fireball_shader = load("res://shaders/fireball.gdshader")
+	return _fireball_shader
+
+static func _get_soft_circle() -> ImageTexture:
+	if not _soft_circle:
+		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+		for y in 64:
+			for x in 64:
+				var d := Vector2(x - 31.5, y - 31.5).length() / 31.5
+				var a := clampf(exp(-d * d * 3.5), 0.0, 1.0) if d <= 1.0 else 0.0
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, a))
+		_soft_circle = ImageTexture.create_from_image(img)
+	return _soft_circle
+
+static func _get_smoke_mesh() -> Mesh:
+	if not _smoke_mesh:
+		var mesh := SphereMesh.new()
+		mesh.radius = 1.0
+		mesh.height = 2.0
+		mesh.radial_segments = 8
+		mesh.rings = 4
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.vertex_color_use_as_albedo = true
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mesh.material = mat
+		_smoke_mesh = mesh
+	return _smoke_mesh
+
+static func _get_fire_quad() -> QuadMesh:
+	if not _fire_quad:
+		_fire_quad = QuadMesh.new()
+		_fire_quad.size = Vector2(2.0, 2.0)
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.vertex_color_use_as_albedo = true
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.albedo_texture = _get_soft_circle()
+		_fire_quad.material = mat
+	return _fire_quad
+
+static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+	var s: float = radius / 50.0
+
+	# 1) Fireball shader sphere — ONE sphere, sized to final size
+	var fireball := MeshInstance3D.new()
+	var fb_mesh := SphereMesh.new()
+	fb_mesh.radius = radius * 1.5
+	fb_mesh.height = radius * 3.0
+	fb_mesh.radial_segments = 32
+	fb_mesh.rings = 16
+	var fb_mat := ShaderMaterial.new()
+	fb_mat.shader = _get_fireball_shader()
+	fb_mat.set_shader_parameter("emission_strength", 8.0)
+	fb_mat.set_shader_parameter("dissolve", 0.0)
+	fb_mesh.material = fb_mat
+	fireball.mesh = fb_mesh
+	root.add_child(fireball)
+
+	# 2) Fire particles around the fireball (soft additive quads)
+	var fire := CPUParticles3D.new()
+	fire.emitting = false
+	fire.one_shot = true
+	fire.amount = 40
+	fire.lifetime = 0.9
+	fire.explosiveness = 0.93
+	fire.direction = Vector3(0, 1, 0)
+	fire.spread = 140.0
+	fire.initial_velocity_min = 50.0 * s
+	fire.initial_velocity_max = 200.0 * s
+	fire.gravity = Vector3(0, 70, 0)
+	fire.damping_min = 50.0
+	fire.damping_max = 100.0
+	fire.scale_amount_min = 18.0 * s
+	fire.scale_amount_max = 45.0 * s
+	fire.scale_amount_curve = _create_explosion_scale_curve()
+	var fire_grad := Gradient.new()
+	fire_grad.set_color(0, Color(1.0, 1.0, 0.85, 1.0))
+	fire_grad.add_point(0.15, Color(1.0, 0.8, 0.2, 1.0))
+	fire_grad.add_point(0.4, Color(1.0, 0.4, 0.05, 0.85))
+	fire_grad.add_point(0.7, Color(0.5, 0.1, 0.01, 0.4))
+	fire_grad.set_color(1, Color(0.15, 0.03, 0.01, 0.0))
+	fire.color_ramp = fire_grad
+	fire.mesh = _get_fire_quad()
+	root.add_child(fire)
+	fire.set_deferred("emitting", true)
+
+	# 3) Sparks
+	var sparks := CPUParticles3D.new()
+	sparks.emitting = false
+	sparks.one_shot = true
+	sparks.amount = 40
+	sparks.lifetime = 0.7
+	sparks.explosiveness = 0.98
+	sparks.direction = Vector3.ZERO
+	sparks.spread = 180.0
+	sparks.initial_velocity_min = 200.0 * s
+	sparks.initial_velocity_max = 600.0 * s
+	sparks.gravity = Vector3(0, -300, 0)
+	sparks.damping_min = 80.0
+	sparks.damping_max = 150.0
+	sparks.scale_amount_min = 1.5 * s
+	sparks.scale_amount_max = 4.0 * s
+	sparks.scale_amount_curve = _create_fade_curve()
+	var spark_grad := Gradient.new()
+	spark_grad.set_color(0, Color(1.0, 1.0, 0.7, 1.0))
+	spark_grad.add_point(0.2, Color(1.0, 0.7, 0.2, 0.9))
+	spark_grad.set_color(1, Color(1.0, 0.3, 0.1, 0.0))
+	sparks.color_ramp = spark_grad
+	root.add_child(sparks)
+	sparks.set_deferred("emitting", true)
+
+	# 4) Smoke (single unified system — soft quad billboards)
+	var smoke := CPUParticles3D.new()
+	smoke.emitting = false
+	smoke.one_shot = true
+	smoke.amount = 40
+	smoke.lifetime = 3.5
+	smoke.explosiveness = 0.7
+	smoke.randomness = 0.4
+	smoke.direction = Vector3(0, 1, 0)
+	smoke.spread = 120.0
+	smoke.initial_velocity_min = 60.0 * s
+	smoke.initial_velocity_max = 250.0 * s
+	smoke.gravity = Vector3(0, 35, 0)
+	smoke.damping_min = 10.0
+	smoke.damping_max = 40.0
+	smoke.scale_amount_min = 50.0 * s
+	smoke.scale_amount_max = 130.0 * s
+	smoke.scale_amount_curve = _create_grow_fade_curve()
+	var smoke_grad := Gradient.new()
+	smoke_grad.set_color(0, Color(0.12, 0.10, 0.08, 0.6))
+	smoke_grad.add_point(0.15, Color(0.10, 0.08, 0.06, 0.5))
+	smoke_grad.add_point(0.4, Color(0.13, 0.10, 0.08, 0.3))
+	smoke_grad.add_point(0.7, Color(0.15, 0.12, 0.10, 0.1))
+	smoke_grad.set_color(1, Color(0.18, 0.15, 0.12, 0.0))
+	smoke.color_ramp = smoke_grad
+	smoke.mesh = _get_smoke_mesh()
+	root.add_child(smoke)
+	smoke.set_deferred("emitting", true)
+
+	# 5) Shockwave ring
+	var ring := MeshInstance3D.new()
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = radius * 0.4
+	ring_mesh.outer_radius = radius * 0.55
+	ring_mesh.rings = 12
+	ring_mesh.ring_segments = 16
+	var ring_mat := StandardMaterial3D.new()
+	ring_mat.albedo_color = Color(1.0, 0.8, 0.3, 0.6)
+	ring_mat.emission_enabled = true
+	ring_mat.emission = Color(1.0, 0.6, 0.2)
+	ring_mat.emission_energy_multiplier = 5.0
+	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ring_mesh.material = ring_mat
+	ring.mesh = ring_mesh
+	ring.rotation.x = deg_to_rad(90.0)
+	root.add_child(ring)
+
+	# 6) OmniLight
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.6, 0.2)
+	light.light_energy = 15.0
+	light.omni_range = 150.0 * s
+	root.add_child(light)
+
+	root.ready.connect(func():
+		# Fireball: quick scale up from 0.4 → 1.0, then dissolve
+		fireball.scale = Vector3.ONE * 0.4
+		var tw := root.create_tween()
+		tw.tween_property(fireball, "scale", Vector3.ONE, 0.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(fb_mat, "shader_parameter/dissolve", 1.0, 0.6).set_ease(Tween.EASE_IN)
+		tw.tween_callback(fireball.queue_free)
+
+		# Ring expand
+		var tw_ring := root.create_tween().set_parallel(true)
+		tw_ring.tween_property(ring, "scale", Vector3.ONE * 5.0, 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		tw_ring.tween_property(ring_mat, "albedo_color:a", 0.0, 0.4)
+		tw_ring.chain().tween_callback(ring.queue_free)
+
+		# Light fade
+		var tw_light := root.create_tween()
+		tw_light.tween_property(light, "light_energy", 0.0, 0.6)
+		tw_light.tween_callback(light.queue_free)
+
+		root.create_tween().tween_callback(root.queue_free).set_delay(4.0)
+	)
+
+	return root
+
 static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
@@ -26,21 +228,7 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	flash.mesh = flash_mesh
 	root.add_child(flash)
 
-	# Shared billboard material for particle meshes
-	var bb_mat := StandardMaterial3D.new()
-	bb_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bb_mat.vertex_color_use_as_albedo = true
-	bb_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bb_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-
-	var sphere := SphereMesh.new()
-	sphere.radius = 1.0
-	sphere.height = 2.0
-	sphere.radial_segments = 6
-	sphere.rings = 3
-	sphere.material = bb_mat
-
-	# 2) Fireball core — massive orange/yellow blobs
+	# 2) Fireball core — soft additive fire quads
 	var fireball := CPUParticles3D.new()
 	fireball.emitting = false
 	fireball.one_shot = true
@@ -64,7 +252,7 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	fire_grad.add_point(0.7, Color(0.6, 0.15, 0.02, 0.5))
 	fire_grad.set_color(1, Color(0.2, 0.05, 0.02, 0.0))
 	fireball.color_ramp = fire_grad
-	fireball.mesh = sphere
+	fireball.mesh = _get_fire_quad()
 	root.add_child(fireball)
 	fireball.set_deferred("emitting", true)
 
@@ -93,90 +281,34 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	root.add_child(sparks)
 	sparks.set_deferred("emitting", true)
 
-	# 4) MASSIVE BLACK SMOKE — thick, dark, billowing column
+	# 4) Smoke (single unified system — soft quad billboards)
 	var smoke := CPUParticles3D.new()
 	smoke.emitting = false
 	smoke.one_shot = true
-	smoke.amount = 80
-	smoke.lifetime = 4.5
-	smoke.explosiveness = 0.6
-	smoke.randomness = 0.4
+	smoke.amount = 50
+	smoke.lifetime = 4.0
+	smoke.explosiveness = 0.5
+	smoke.randomness = 0.5
 	smoke.direction = Vector3(0, 1, 0)
-	smoke.spread = 50.0
-	smoke.initial_velocity_min = 60.0 * s
-	smoke.initial_velocity_max = 180.0 * s
-	smoke.gravity = Vector3(0, 40, 0)  # rises upward
-	smoke.damping_min = 3.0
-	smoke.damping_max = 10.0
+	smoke.spread = 100.0
+	smoke.initial_velocity_min = 30.0 * s
+	smoke.initial_velocity_max = 250.0 * s
+	smoke.gravity = Vector3(0, 35, 0)
+	smoke.damping_min = 5.0
+	smoke.damping_max = 35.0
 	smoke.scale_amount_min = 60.0 * s
-	smoke.scale_amount_max = 140.0 * s
+	smoke.scale_amount_max = 160.0 * s
 	smoke.scale_amount_curve = _create_grow_fade_curve()
 	var smoke_grad := Gradient.new()
-	smoke_grad.set_color(0, Color(0.04, 0.03, 0.02, 1.0))
-	smoke_grad.add_point(0.15, Color(0.03, 0.02, 0.01, 0.95))
-	smoke_grad.add_point(0.5, Color(0.05, 0.04, 0.03, 0.8))
-	smoke_grad.add_point(0.8, Color(0.07, 0.05, 0.04, 0.4))
-	smoke_grad.set_color(1, Color(0.1, 0.08, 0.06, 0.0))
+	smoke_grad.set_color(0, Color(0.12, 0.10, 0.08, 0.6))
+	smoke_grad.add_point(0.15, Color(0.10, 0.08, 0.06, 0.5))
+	smoke_grad.add_point(0.4, Color(0.13, 0.10, 0.08, 0.3))
+	smoke_grad.add_point(0.7, Color(0.15, 0.12, 0.10, 0.1))
+	smoke_grad.set_color(1, Color(0.18, 0.15, 0.12, 0.0))
 	smoke.color_ramp = smoke_grad
-	smoke.mesh = sphere
+	smoke.mesh = _get_smoke_mesh()
 	root.add_child(smoke)
 	smoke.set_deferred("emitting", true)
-
-	# 4b) Secondary smoke burst — wider, lower, faster initial spread
-	var smoke2 := CPUParticles3D.new()
-	smoke2.emitting = false
-	smoke2.one_shot = true
-	smoke2.amount = 50
-	smoke2.lifetime = 3.5
-	smoke2.explosiveness = 0.85
-	smoke2.randomness = 0.3
-	smoke2.direction = Vector3.ZERO
-	smoke2.spread = 180.0
-	smoke2.initial_velocity_min = 100.0 * s
-	smoke2.initial_velocity_max = 300.0 * s
-	smoke2.gravity = Vector3(0, 25, 0)
-	smoke2.damping_min = 20.0
-	smoke2.damping_max = 50.0
-	smoke2.scale_amount_min = 40.0 * s
-	smoke2.scale_amount_max = 100.0 * s
-	smoke2.scale_amount_curve = _create_grow_fade_curve()
-	var smoke2_grad := Gradient.new()
-	smoke2_grad.set_color(0, Color(0.06, 0.04, 0.02, 0.95))
-	smoke2_grad.add_point(0.2, Color(0.04, 0.03, 0.02, 0.85))
-	smoke2_grad.add_point(0.6, Color(0.06, 0.04, 0.03, 0.5))
-	smoke2_grad.set_color(1, Color(0.08, 0.06, 0.05, 0.0))
-	smoke2.color_ramp = smoke2_grad
-	smoke2.mesh = sphere
-	root.add_child(smoke2)
-	smoke2.set_deferred("emitting", true)
-
-	# 4c) Lingering smoke trail — slow rising dark cloud
-	var smoke3 := CPUParticles3D.new()
-	smoke3.emitting = false
-	smoke3.one_shot = true
-	smoke3.amount = 30
-	smoke3.lifetime = 5.0
-	smoke3.explosiveness = 0.3
-	smoke3.randomness = 0.5
-	smoke3.direction = Vector3(0, 1, 0)
-	smoke3.spread = 25.0
-	smoke3.initial_velocity_min = 20.0 * s
-	smoke3.initial_velocity_max = 60.0 * s
-	smoke3.gravity = Vector3(0, 30, 0)
-	smoke3.damping_min = 2.0
-	smoke3.damping_max = 8.0
-	smoke3.scale_amount_min = 80.0 * s
-	smoke3.scale_amount_max = 180.0 * s
-	smoke3.scale_amount_curve = _create_grow_fade_curve()
-	var smoke3_grad := Gradient.new()
-	smoke3_grad.set_color(0, Color(0.03, 0.02, 0.01, 0.7))
-	smoke3_grad.add_point(0.3, Color(0.04, 0.03, 0.02, 0.6))
-	smoke3_grad.add_point(0.7, Color(0.06, 0.05, 0.04, 0.3))
-	smoke3_grad.set_color(1, Color(0.08, 0.06, 0.05, 0.0))
-	smoke3.color_ramp = smoke3_grad
-	smoke3.mesh = sphere
-	root.add_child(smoke3)
-	smoke3.set_deferred("emitting", true)
 
 	# 5) Shockwave ring — expanding torus
 	var ring := MeshInstance3D.new()
@@ -353,6 +485,16 @@ static func _create_fade_curve() -> Curve:
 static func _create_grow_fade_curve() -> Curve:
 	var c := Curve.new()
 	c.add_point(Vector2(0.0, 0.3))
-	c.add_point(Vector2(0.3, 1.0))
-	c.add_point(Vector2(1.0, 0.5))
+	c.add_point(Vector2(0.25, 1.0))
+	c.add_point(Vector2(0.6, 0.5))
+	c.add_point(Vector2(1.0, 0.0))
+	return c
+
+static func _create_explosion_scale_curve() -> Curve:
+	## Fast grow, hold big, then shrink — makes fireball blobs feel chunky
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.2))
+	c.add_point(Vector2(0.15, 1.0))
+	c.add_point(Vector2(0.5, 0.9))
+	c.add_point(Vector2(1.0, 0.0))
 	return c

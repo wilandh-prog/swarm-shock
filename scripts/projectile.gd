@@ -325,90 +325,19 @@ func _explode() -> void:
 				if enemy.has_method("take_damage"):
 					enemy.take_damage(damage * falloff)
 
-	# --- BIG explosion ---
 	var scene_root: Node = get_tree().current_scene
 	var pos: Vector3 = global_position
 
-	# Fireball
-	var fireball := MeshInstance3D.new()
-	var fb_mesh := SphereMesh.new()
-	fb_mesh.radius = explosion_radius * 0.5
-	fb_mesh.height = explosion_radius
-	fb_mesh.radial_segments = 16
-	fb_mesh.rings = 8
-	var fb_mat := StandardMaterial3D.new()
-	fb_mat.albedo_color = Color(1.0, 0.6, 0.1, 0.8)
-	fb_mat.emission_enabled = true
-	fb_mat.emission = Color(1.0, 0.4, 0.05)
-	fb_mat.emission_energy_multiplier = 8.0
-	fb_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fb_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	fb_mesh.material = fb_mat
-	fireball.mesh = fb_mesh
-	scene_root.add_child(fireball)
-	fireball.global_position = pos
-
-	fireball.scale = Vector3.ONE * 0.1
-	var tw := fireball.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(fireball, "scale", Vector3.ONE * 1.5, 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
-	tw.tween_property(fb_mat, "albedo_color", Color(1.0, 0.3, 0.0, 0.0), 0.4).set_ease(Tween.EASE_IN)
-	tw.tween_property(fb_mat, "emission_energy_multiplier", 0.0, 0.4)
-	tw.chain().tween_callback(fireball.queue_free)
-
-	# Shockwave ring
-	var ring := MeshInstance3D.new()
-	var ring_mesh := TorusMesh.new()
-	ring_mesh.inner_radius = explosion_radius * 0.4
-	ring_mesh.outer_radius = explosion_radius * 0.5
-	ring_mesh.rings = 16
-	ring_mesh.ring_segments = 24
-	var ring_mat := StandardMaterial3D.new()
-	ring_mat.albedo_color = Color(1.0, 0.8, 0.3, 0.6)
-	ring_mat.emission_enabled = true
-	ring_mat.emission = Color(1.0, 0.6, 0.2)
-	ring_mat.emission_energy_multiplier = 5.0
-	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ring_mesh.material = ring_mat
-	ring.mesh = ring_mesh
-	ring.rotation.x = deg_to_rad(90.0)
-	scene_root.add_child(ring)
-	ring.global_position = pos
-
-	var tw2 := ring.create_tween()
-	tw2.set_parallel(true)
-	tw2.tween_property(ring, "scale", Vector3.ONE * 3.0, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
-	tw2.tween_property(ring_mat, "albedo_color", Color(1.0, 0.5, 0.1, 0.0), 0.35)
-	tw2.chain().tween_callback(ring.queue_free)
-
-	# Debris + smoke
-	var debris := Particles.enemy_death(pos, Color(1.0, 0.5, 0.15), explosion_radius * 0.8)
-	scene_root.add_child(debris)
-
-	var smoke := CPUParticles3D.new()
-	smoke.emitting = false
-	smoke.one_shot = true
-	smoke.amount = 16
-	smoke.lifetime = 0.6
-	smoke.explosiveness = 0.9
-	smoke.direction = Vector3.ZERO
-	smoke.spread = 180.0
-	smoke.initial_velocity_min = 30.0
-	smoke.initial_velocity_max = 80.0
-	smoke.gravity = Vector3(0, 40, 0)
-	smoke.damping_min = 40.0
-	smoke.damping_max = 80.0
-	smoke.scale_amount_min = 8.0
-	smoke.scale_amount_max = 18.0
-	smoke.color = Color(0.3, 0.3, 0.3, 0.5)
-	smoke.color_ramp = Particles._create_fade_gradient(Color(0.2, 0.2, 0.2, 0.4))
-	smoke.position = pos
-	smoke.finished.connect(smoke.queue_free)
-	smoke.set_deferred("emitting", true)
-	scene_root.add_child(smoke)
-
-	EffectsManager.chromatic_pulse(0.006)
-	EffectsManager.screen_flash(Color(1.0, 0.6, 0.2), 0.15)
+	if is_enemy_missile:
+		# Small explosion for enemy missiles hitting the player
+		var explosion := Particles.explosion(pos, 15.0)
+		scene_root.add_child(explosion)
+		EffectsManager.screen_shake(4.0, 0.1)
+	else:
+		# Big explosion for player missiles
+		var explosion := Particles.explosion(pos, explosion_radius)
+		scene_root.add_child(explosion)
+		EffectsManager.chromatic_pulse(0.006)
+		EffectsManager.screen_flash(Color(1.0, 0.6, 0.2), 0.15)
 
 	queue_free()
