@@ -62,6 +62,8 @@ func _draw() -> void:
 	_draw_flare_status(ss)
 	_draw_radar(ss)
 	_draw_speed_lines(ss)
+	_draw_ship_lock_reticle(ss)
+	_draw_agm_status(ss)
 	_draw_awacs_radio(ss)
 	_draw_wave_indicator(ss)
 	if landing_active:
@@ -128,9 +130,11 @@ func _draw_speed_tape(ss: Vector2) -> void:
 	draw_rect(Rect2(x - 50, cy - half_h, 78, half_h * 2.0), HUD_BG)
 	draw_line(Vector2(x + 28, cy - half_h), Vector2(x + 28, cy + half_h), HUD_GREEN, 1.0)
 
-	# Speed in knots (game speed × 2.5 so cruise ~500kt), divided by 3 in mission 2
-	var divisor: float = 3.0 if mission_label != "" else speed_display_divisor
-	var spd: float = _smooth_speed / divisor * 2.5
+	# Speed in knots (game speed × 2.5 so cruise ~500kt)
+	# Auto-detect mission 2 (3x speed) by comparing move_speed to base
+	var base_spd: float = GameManager.get_stat("move_speed")
+	var spd_div: float = maxf(player.move_speed / maxf(base_spd, 1.0), 1.0)
+	var spd: float = _smooth_speed / spd_div * 2.5
 	var ppu: float = 4.0
 	var base: int = int(floor(spd))
 	var frac: float = spd - float(base)
@@ -477,7 +481,7 @@ func _draw_flare_status(ss: Vector2) -> void:
 
 const RADAR_RADIUS: float = 70.0
 const RADAR_RANGE_DEFAULT: float = 3000.0
-const RADAR_RANGE_MISSION2: float = 25000.0
+const RADAR_RANGE_MISSION2: float = 250000.0
 var radar_range: float = RADAR_RANGE_DEFAULT
 
 func _draw_radar(ss: Vector2) -> void:
@@ -598,6 +602,82 @@ func _draw_wave_indicator(ss: Vector2) -> void:
 	else:
 		text = "WAVE %d/%d" % [wave_current, wave_total]
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, HUD_GREEN_DIM)
+
+# --- Ship lock reticle (AGM targeting) ---
+
+const HUD_AMBER := Color(1.0, 0.7, 0.15, 0.9)
+const HUD_AMBER_DIM := Color(1.0, 0.7, 0.15, 0.4)
+
+func _draw_ship_lock_reticle(ss: Vector2) -> void:
+	if not player or not player.weapon_manager:
+		return
+	var wm = player.weapon_manager
+	if not is_instance_valid(wm.ship_tracking_target):
+		return
+	var tgt: Node3D = wm.ship_tracking_target
+
+	var cam := get_viewport().get_camera_3d()
+	if not cam or cam.is_position_behind(tgt.global_position):
+		return
+
+	var pos: Vector2 = cam.unproject_position(tgt.global_position)
+	var progress: float = wm.ship_lock_progress
+	var is_locked: bool = wm.ship_locked_target != null and is_instance_valid(wm.ship_locked_target)
+
+	# Square brackets that close in
+	var size: float = lerpf(100.0, 24.0, progress)
+	var color: Color = HUD_AMBER
+	if is_locked:
+		var flash: float = fmod(Time.get_ticks_msec() * 0.001, 0.3)
+		color = HUD_AMBER if flash < 0.2 else Color(1.0, 0.7, 0.15, 0.5)
+
+	# Corner brackets
+	var corner: float = size * 0.35
+	# Top-left
+	draw_line(Vector2(pos.x - size, pos.y - size), Vector2(pos.x - size + corner, pos.y - size), color, 2.0)
+	draw_line(Vector2(pos.x - size, pos.y - size), Vector2(pos.x - size, pos.y - size + corner), color, 2.0)
+	# Top-right
+	draw_line(Vector2(pos.x + size - corner, pos.y - size), Vector2(pos.x + size, pos.y - size), color, 2.0)
+	draw_line(Vector2(pos.x + size, pos.y - size), Vector2(pos.x + size, pos.y - size + corner), color, 2.0)
+	# Bottom-left
+	draw_line(Vector2(pos.x - size, pos.y + size - corner), Vector2(pos.x - size, pos.y + size), color, 2.0)
+	draw_line(Vector2(pos.x - size, pos.y + size), Vector2(pos.x - size + corner, pos.y + size), color, 2.0)
+	# Bottom-right
+	draw_line(Vector2(pos.x + size, pos.y + size - corner), Vector2(pos.x + size, pos.y + size), color, 2.0)
+	draw_line(Vector2(pos.x + size - corner, pos.y + size), Vector2(pos.x + size, pos.y + size), color, 2.0)
+
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+
+	var dist: float = player.global_position.distance_to(tgt.global_position)
+	draw_string(font, Vector2(pos.x - 30, pos.y + size + 28), "%dM" % int(dist), HORIZONTAL_ALIGNMENT_CENTER, 60, 13, color)
+
+	if is_locked:
+		draw_string(font, Vector2(pos.x - 25, pos.y + size + 14), "AGM", HORIZONTAL_ALIGNMENT_CENTER, 50, 16, color)
+
+func _draw_agm_status(ss: Vector2) -> void:
+	if not player or not player.weapon_manager:
+		return
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var wm = player.weapon_manager
+	var x: float = 75.0
+	var y: float = ss.y * 0.5 + 205.0
+
+	var has_ship_lock: bool = wm.ship_locked_target != null and is_instance_valid(wm.ship_locked_target)
+	var has_ship_tracking: bool = wm.ship_tracking_target != null and is_instance_valid(wm.ship_tracking_target)
+
+	if not has_ship_tracking and not has_ship_lock:
+		return  # no ships nearby, don't clutter HUD
+
+	if wm._agm_cooldown > 0.0:
+		draw_string(font, Vector2(x, y), "AGM %.1f" % wm._agm_cooldown, HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_AMBER_DIM)
+	elif has_ship_lock:
+		draw_string(font, Vector2(x, y), "AGM RDY [E]", HORIZONTAL_ALIGNMENT_LEFT, 100, 11, HUD_AMBER)
+	elif has_ship_tracking:
+		draw_string(font, Vector2(x, y), "AGM LOCK...", HORIZONTAL_ALIGNMENT_LEFT, 100, 11, HUD_AMBER_DIM)
 
 # --- Landing guidance ---
 

@@ -283,7 +283,7 @@ func _process(delta: float) -> void:
 		if ships_left <= 2 and ships_left > 0 and not _m2_ships_warned:
 			awacs_message("%d SHIP%s REMAINING." % [ships_left, "" if ships_left == 1 else "S"], 3.0)
 			_m2_ships_warned = true
-		if ships_left == 0:
+		if _ships_total > 0 and ships_left == 0:
 			awacs_message("ALL SHIPS DESTROYED. RTB.", 4.0)
 			_begin_landing_sequence()
 
@@ -751,12 +751,18 @@ func _begin_mission_2() -> void:
 	hud.stop_landing_guidance()
 
 	# Freeze ocean for mission 2 (ships move over static ocean)
+	# Enlarge ground plane to cover long-range flight
+	if _ground and _ground.mesh is PlaneMesh:
+		_ground.mesh.size = Vector2(300000, 300000)
+		_ground.mesh.subdivide_width = 512
+		_ground.mesh.subdivide_depth = 512
 	if _bg_shader_mat:
 		_bg_shader_mat.set_shader_parameter("time_val", _game_time)
+		_bg_shader_mat.set_shader_parameter("fog_intensity", 0.0)
 
 	# Show briefing panel — launch button triggers catapult
 	hud.show_mission_briefing("MISSION 2: CONVOY INTERCEPT",
-		"Destroy all enemy missile cruisers.\nShips approaching from the north.\nUse missiles and gun to engage.",
+		"Destroy all enemy missile cruisers.\nAGM missile [E] locks onto ships.\nMissiles [SPACE] and gun [G] also work.",
 		_on_briefing_launch)
 
 func _on_briefing_launch() -> void:
@@ -795,7 +801,7 @@ func _spawn_convoy() -> void:
 	# Convoy approaches from the direction the carrier faces
 	# Carrier stern faces the player approach; ships come from the bow side
 	var away_dir := Vector3(sin(_carrier_heading), 0.0, -cos(_carrier_heading))
-	var base_spawn: Vector3 = _carrier.global_position + away_dir * 20000.0
+	var base_spawn: Vector3 = _carrier.global_position + away_dir * 80000.0
 	base_spawn.y = 0.0
 
 	# Ships head toward carrier (opposite direction)

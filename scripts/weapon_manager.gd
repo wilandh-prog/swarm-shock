@@ -30,6 +30,21 @@ const LOCK_CONE: float = 0.6  # dot product threshold (~53 degrees)
 const LOCK_SPEED: float = 0.6  # ~1.7s at perfect centering
 const LOCK_DECAY: float = 1.0  # lose tracking in ~1s
 
+# AGM (Anti-Ground Missile) for ships
+var agm_damage: float = 80.0
+var agm_fire_rate: float = 2.0
+var _agm_cooldown: float = 0.0
+var _agm_sound: AudioStreamPlayer
+
+# Ship lock-on (separate from air-to-air)
+var ship_locked_target: Node3D = null
+var ship_tracking_target: Node3D = null
+var ship_lock_progress: float = 0.0
+const AGM_LOCK_RANGE: float = 15000.0
+const AGM_LOCK_CONE: float = 0.5  # ~60° half-cone (wider for big ships)
+const AGM_LOCK_SPEED: float = 1.0  # faster lock for large targets
+const AGM_LOCK_DECAY: float = 0.5
+
 func _ready() -> void:
 	projectile_scene = load("res://scenes/entities/projectile.tscn")
 	player = get_parent() as CharacterBody3D
@@ -53,6 +68,7 @@ func _process(delta: float) -> void:
 		return
 
 	_update_lock_on(delta)
+	_update_ship_lock_on(delta)
 
 	if _cooldown > 0.0:
 		_cooldown -= delta * player.fire_rate_mult
@@ -66,6 +82,14 @@ func _process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_G) and _gun_cooldown <= 0.0:
 		_gun_cooldown = gun_fire_rate
 		_fire_gun()
+
+	# AGM (E key) — requires ship lock
+	if _agm_cooldown > 0.0:
+		_agm_cooldown -= delta
+	if Input.is_key_pressed(KEY_E) and _agm_cooldown <= 0.0:
+		if ship_locked_target and is_instance_valid(ship_locked_target):
+			_agm_cooldown = agm_fire_rate
+			_fire_agm()
 
 func _update_lock_on(delta: float) -> void:
 	var heading: float = player._heading
@@ -120,6 +144,78 @@ func _update_lock_on(delta: float) -> void:
 		tracking_target = best_target
 		lock_progress = 0.0
 
+func _update_ship_lock_on(delta: float) -> void:
+	var heading: float = player._heading
+	var fwd := Vector3(sin(heading), 0.0, -cos(heading))
+
+	# If fully locked, keep lock while in range
+	if ship_locked_target and is_instance_valid(ship_locked_target):
+		var dist: float = player.global_position.distance_to(ship_locked_target.global_position)
+		if dist < AGM_LOCK_RANGE:
+			ship_tracking_target = ship_locked_target
+			return
+		ship_locked_target = null
+		ship_tracking_target = null
+		ship_lock_progress = 0.0
+
+	# If tracking, stick with it in cone
+	if ship_tracking_target and is_instance_valid(ship_tracking_target):
+		var to_tt: Vector3 = ship_tracking_target.global_position - player.global_position
+		var tt_dist: float = to_tt.length()
+		var tt_dot: float = fwd.dot(to_tt / tt_dist) if tt_dist > 1.0 else -1.0
+		if tt_dist < AGM_LOCK_RANGE and tt_dot > AGM_LOCK_CONE:
+			var center: float = clampf((tt_dot - AGM_LOCK_CONE) / (1.0 - AGM_LOCK_CONE), 0.0, 1.0)
+			ship_lock_progress = minf(ship_lock_progress + AGM_LOCK_SPEED * center * delta, 1.0)
+			if ship_lock_progress >= 1.0:
+				ship_locked_target = ship_tracking_target
+			return
+		ship_lock_progress = maxf(ship_lock_progress - AGM_LOCK_DECAY * delta, 0.0)
+		if ship_lock_progress <= 0.0:
+			ship_tracking_target = null
+		return
+
+	# Find best ship in cone
+	var best_target: Node3D = null
+	var best_dot: float = AGM_LOCK_CONE
+	for enemy in GameManager.enemies_alive:
+		if not is_instance_valid(enemy):
+			continue
+		if not enemy.is_in_group("ship"):
+			continue
+		var to_enemy: Vector3 = enemy.global_position - player.global_position
+		var dist: float = to_enemy.length()
+		if dist > AGM_LOCK_RANGE or dist < 10.0:
+			continue
+		var dot: float = fwd.dot(to_enemy / dist)
+		if dot > best_dot:
+			best_dot = dot
+			best_target = enemy
+
+	if best_target:
+		ship_tracking_target = best_target
+		ship_lock_progress = 0.0
+
+func _fire_agm() -> void:
+	if not ship_locked_target or not is_instance_valid(ship_locked_target):
+		return
+	if _missile_sound:
+		_missile_sound.play()
+	if _fox2_sound:
+		_fox2_sound.play()
+	var container: Node = _get_projectile_container()
+	if not container:
+		return
+	var aim_dir: Vector3 = (ship_locked_target.global_position - player.global_position).normalized()
+	var spd: float = maxf(4000.0, player._current_speed * 1.5)
+	var proj: Area3D = projectile_scene.instantiate()
+	proj.setup(aim_dir, agm_damage * player.damage_mult, spd)
+	proj.homing_target = ship_locked_target
+	proj.homing_turn_rate = 2.0
+	proj.explosion_radius = 150.0
+	proj.scale = Vector3(4.0, 4.0, 4.0)
+	container.add_child(proj)
+	proj.global_position = player.global_position
+
 func _fire_missiles() -> void:
 	if _missile_sound:
 		_missile_sound.play()
@@ -136,13 +232,14 @@ func _fire_missiles() -> void:
 	var total: int = missile_count + player.projectile_count_bonus
 	var base_dmg: float = missile_damage * player.damage_mult
 
+	var spd: float = maxf(missile_speed, player._current_speed + 500.0)
 	for i in total:
 		var spread: float = 0.0
 		if total > 1:
 			spread = deg_to_rad(4.0) * (i - (total - 1) / 2.0)
 		var dir: Vector3 = aim_dir.rotated(Vector3.UP, spread)
 		var proj: Area3D = projectile_scene.instantiate()
-		proj.setup(dir, base_dmg, missile_speed)
+		proj.setup(dir, base_dmg, spd)
 		if locked_target and is_instance_valid(locked_target):
 			proj.homing_target = locked_target
 			proj.homing_turn_rate = missile_turn_rate

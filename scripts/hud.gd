@@ -481,3 +481,95 @@ func _add_stat_row(parent: VBoxContainer, label_text: String, value_text: String
 	row.add_child(val)
 
 	parent.add_child(row)
+
+# --- Mission briefing panel ---
+
+var _briefing_panel: PanelContainer = null
+
+func show_mission_briefing(title_text: String, body_text: String, launch_callback: Callable) -> void:
+	get_tree().paused = true
+
+	_briefing_panel = PanelContainer.new()
+	_briefing_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_briefing_panel.custom_minimum_size = Vector2(450, 320)
+
+	# Military green panel style
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.05, 0.03, 0.95)
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(0.3, 0.9, 0.4, 0.8)
+	panel_style.corner_radius_top_left = 12
+	panel_style.corner_radius_top_right = 12
+	panel_style.corner_radius_bottom_left = 12
+	panel_style.corner_radius_bottom_right = 12
+	panel_style.shadow_color = Color(0.2, 0.8, 0.3, 0.2)
+	panel_style.shadow_size = 10
+	_briefing_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	_briefing_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 16)
+	margin.add_child(vbox)
+
+	# Title
+	var title := Label.new()
+	title.text = title_text
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(0.3, 1.0, 0.4))
+	vbox.add_child(title)
+
+	# Separator
+	var sep := HSeparator.new()
+	sep.add_theme_stylebox_override("separator", StyleBoxLine.new())
+	vbox.add_child(sep)
+
+	# Body text
+	var body := Label.new()
+	body.text = body_text
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 16)
+	body.add_theme_color_override("font_color", Color(0.7, 0.9, 0.7))
+	vbox.add_child(body)
+
+	# Spacer
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 12
+	vbox.add_child(spacer)
+
+	# LAUNCH button
+	var launch_btn := Button.new()
+	launch_btn.text = "LAUNCH"
+	launch_btn.custom_minimum_size.y = 50
+	launch_btn.add_theme_font_size_override("font_size", 22)
+	launch_btn.add_theme_color_override("font_color", Color(0.9, 1.0, 0.9))
+	var green := Color(0.2, 0.9, 0.4)
+	launch_btn.add_theme_stylebox_override("normal", _create_button_style(green, Color(0.03, 0.12, 0.05, 0.9)))
+	launch_btn.add_theme_stylebox_override("hover", _create_button_style(green.lightened(0.3), Color(0.05, 0.18, 0.08, 0.95)))
+	launch_btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.08, 0.22, 0.1, 1.0)))
+	launch_btn.pressed.connect(func():
+		get_tree().paused = false
+		_briefing_panel.queue_free()
+		_briefing_panel = null
+		launch_callback.call()
+	)
+	vbox.add_child(launch_btn)
+
+	add_child(_briefing_panel)
+
+	# Animate in
+	_briefing_panel.modulate.a = 0.0
+	_briefing_panel.scale = Vector2(0.7, 0.7)
+	_briefing_panel.pivot_offset = _briefing_panel.size / 2.0
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(_briefing_panel, "modulate:a", 1.0, 0.3)
+	tween.parallel().tween_property(_briefing_panel, "scale", Vector2.ONE, 0.5)

@@ -17,13 +17,13 @@ var _heading: float = 0.0
 
 # Combat — SAM (surface-to-air missile)
 var target: Node3D = null
-const SAM_COOLDOWN: float = 4.0
-const SAM_RANGE: float = 6000.0
-const SAM_SPEED: float = 800.0
-const SAM_DAMAGE: float = 10.0
-const SAM_HOMING: float = 1.0
+const SAM_COOLDOWN: float = 3.5
+const SAM_RANGE: float = 15000.0
+const SAM_SPEED: float = 20000.0
+const SAM_DAMAGE: float = 12.0
+const SAM_HOMING: float = 2.5
 var _sam_timer: float = 2.0  # initial delay before first shot
-var _missiles_remaining: int = 6
+var _missiles_remaining: int = 8
 
 # Visuals
 var _model_instance: Node3D
@@ -42,6 +42,7 @@ static var _hp_fill_mat_cached: StandardMaterial3D
 
 func _ready() -> void:
 	add_to_group("enemy")
+	add_to_group("ship")
 	GameManager.register_enemy(self)
 	collision_layer = 4
 	collision_mask = 8

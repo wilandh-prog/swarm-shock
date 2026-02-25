@@ -24,6 +24,7 @@ uniform vec4 sky_reflect_color : source_color = vec4(0.45, 0.65, 0.85, 1.0);
 uniform vec4 sss_color : source_color = vec4(0.05, 0.4, 0.3, 1.0);
 uniform float detail_normal_strength : hint_range(0.0, 10.0) = 5.0;
 uniform vec4 horizon_color : source_color = vec4(0.55, 0.65, 0.78, 1.0);
+uniform float fog_intensity : hint_range(0.0, 1.0) = 1.0;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -227,11 +228,12 @@ void fragment() {
 	// --- WATER COLOR ---
 	// Distance for LOD and fog (computed early for performance)
 	float dist_uv = max(abs(UV.x - 0.5), abs(UV.y - 0.5)) * 2.0;
-	float fog = smoothstep(0.3, 0.6, dist_uv);
+	float dist_fade = smoothstep(0.3, 0.6, dist_uv);
+	float fog = dist_fade * fog_intensity;
 
 	vec3 water_col = horizon_color.rgb; // default for fully fogged pixels
 
-	if (fog < 0.99) {
+	if (dist_fade < 0.99) {
 		float below = max(water_level - terrain, 0.0);
 		float depth_raw = below / 0.25;
 		float beer = exp(-depth_raw * 2.0);
