@@ -19,9 +19,9 @@ var _heading: float = 0.0
 var target: Node3D = null
 const SAM_COOLDOWN: float = 3.5
 const SAM_RANGE: float = 15000.0
-const SAM_SPEED: float = 20000.0
+const SAM_SPEED: float = 2000.0
 const SAM_DAMAGE: float = 12.0
-const SAM_HOMING: float = 2.5
+const SAM_HOMING: float = 1.8
 var _sam_timer: float = 2.0  # initial delay before first shot
 var _missiles_remaining: int = 8
 

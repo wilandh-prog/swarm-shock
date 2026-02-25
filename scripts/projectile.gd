@@ -235,14 +235,28 @@ func _update_mesh_orientation() -> void:
 	_mesh_root.basis = Basis(right, fwd, Vector3.UP)
 
 func _process(delta: float) -> void:
-	# Homing: steer toward target
+	# Homing: steer toward predicted intercept point
 	if homing_target and is_instance_valid(homing_target):
 		var to_target := homing_target.global_position - global_position
 		var dist := to_target.length()
 		if dist > 1.0:
-			var desired := to_target / dist
+			# Lead prediction: aim where target will be
+			var intercept_pos := homing_target.global_position
+			if homing_target.has_method("get_velocity"):
+				var target_vel: Vector3 = homing_target.get_velocity()
+				var closing_speed := speed - direction.dot(target_vel)
+				if closing_speed > 10.0:
+					var time_to_hit := dist / closing_speed
+					intercept_pos += target_vel * time_to_hit * 0.7
+			elif homing_target is CharacterBody3D:
+				var target_vel: Vector3 = homing_target.velocity
+				var closing_speed := speed - direction.dot(target_vel)
+				if closing_speed > 10.0:
+					var time_to_hit := dist / closing_speed
+					intercept_pos += target_vel * time_to_hit * 0.7
+			var desired := (intercept_pos - global_position).normalized()
 			var turn := homing_turn_rate
-			# Terminal guidance: tighten turn when close to prevent orbiting
+			# Terminal guidance: tighten turn when close
 			if dist < 400.0:
 				turn *= 1.5 + (1.0 - dist / 400.0) * 4.0
 			direction = direction.slerp(desired, turn * delta).normalized()
