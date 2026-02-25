@@ -34,6 +34,7 @@ const TURN_DECEL: float = 4.0
 const SPEED_ACCEL: float = 200.0
 const MIN_SPEED_MULT: float = 0.5
 const MAX_SPEED_MULT: float = 2.0
+const TURN_SPEED_BLEED: float = 1500.0 # speed lost per second at full turn
 const ALTITUDE_SPEED: float = 800.0
 const MIN_ALTITUDE: float = 0.0
 const MAX_ALTITUDE: float = 4000.0
@@ -395,9 +396,14 @@ func _physics_process(delta: float) -> void:
 	# Steering: left/right turns the plane
 	var turn_input: float = Input.get_axis("move_left", "move_right")
 
+	# Turn rate scales inversely with speed — harder to turn at high speed
+	var speed_ratio: float = _current_speed / move_speed
+	var turn_scale: float = lerpf(1.2, 0.7, clampf((speed_ratio - MIN_SPEED_MULT) / (MAX_SPEED_MULT - MIN_SPEED_MULT), 0.0, 1.0))
+	var effective_turn_rate: float = MAX_TURN_RATE * turn_scale
+
 	# Smoothly accelerate/decelerate turn speed
 	if absf(turn_input) > 0.1:
-		_turn_speed = move_toward(_turn_speed, turn_input * MAX_TURN_RATE, TURN_ACCEL * delta)
+		_turn_speed = move_toward(_turn_speed, turn_input * effective_turn_rate, TURN_ACCEL * delta)
 	else:
 		_turn_speed = move_toward(_turn_speed, 0.0, TURN_DECEL * delta)
 
@@ -413,6 +419,11 @@ func _physics_process(delta: float) -> void:
 	elif landing_mode:
 		target_speed = _current_speed  # Throttle hold: no input = keep speed
 	_current_speed = move_toward(_current_speed, target_speed, SPEED_ACCEL * delta)
+
+	# Speed bleeds in hard turns — turning costs energy
+	var turn_intensity: float = absf(_turn_speed) / MAX_TURN_RATE
+	var speed_bleed: float = turn_intensity * turn_intensity * TURN_SPEED_BLEED * delta
+	_current_speed = maxf(_current_speed - speed_bleed, move_speed * MIN_SPEED_MULT)
 
 	# Forward direction from heading
 	var forward := Vector3(sin(_heading), 0.0, -cos(_heading))
