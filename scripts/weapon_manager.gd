@@ -27,7 +27,7 @@ var tracking_target: Node3D = null
 var lock_progress: float = 0.0
 const LOCK_RANGE: float = 3000.0
 const LOCK_CONE: float = 0.6  # dot product threshold (~53 degrees)
-const LOCK_SPEED: float = 0.6  # ~1.7s at perfect centering
+var lock_speed: float = 0.6  # ~1.7s at perfect centering, upgradeable
 const LOCK_DECAY: float = 1.0  # lose tracking in ~1s
 
 # AGM (Anti-Ground Missile) for ships
@@ -42,7 +42,7 @@ var ship_tracking_target: Node3D = null
 var ship_lock_progress: float = 0.0
 const AGM_LOCK_RANGE: float = 15000.0
 const AGM_LOCK_CONE: float = 0.5  # ~60° half-cone (wider for big ships)
-const AGM_LOCK_SPEED: float = 1.0  # faster lock for large targets
+var agm_lock_speed: float = 1.0  # faster lock for large targets, upgradeable
 const AGM_LOCK_DECAY: float = 0.5
 
 func _ready() -> void:
@@ -114,7 +114,7 @@ func _update_lock_on(delta: float) -> void:
 		if tt_dist < LOCK_RANGE and tt_dot > LOCK_CONE:
 			# Still valid — advance progress
 			var center: float = clampf((tt_dot - LOCK_CONE) / (1.0 - LOCK_CONE), 0.0, 1.0)
-			lock_progress = minf(lock_progress + LOCK_SPEED * center * delta, 1.0)
+			lock_progress = minf(lock_progress + lock_speed * center * delta, 1.0)
 			if lock_progress >= 1.0:
 				locked_target = tracking_target
 			return
@@ -165,7 +165,7 @@ func _update_ship_lock_on(delta: float) -> void:
 		var tt_dot: float = fwd.dot(to_tt / tt_dist) if tt_dist > 1.0 else -1.0
 		if tt_dist < AGM_LOCK_RANGE and tt_dot > AGM_LOCK_CONE:
 			var center: float = clampf((tt_dot - AGM_LOCK_CONE) / (1.0 - AGM_LOCK_CONE), 0.0, 1.0)
-			ship_lock_progress = minf(ship_lock_progress + AGM_LOCK_SPEED * center * delta, 1.0)
+			ship_lock_progress = minf(ship_lock_progress + agm_lock_speed * center * delta, 1.0)
 			if ship_lock_progress >= 1.0:
 				ship_locked_target = ship_tracking_target
 			return

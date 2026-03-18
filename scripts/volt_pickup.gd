@@ -1,7 +1,7 @@
 extends Area3D
-## Volt pickup (persistent currency). Rare, golden glow.
+## XP pickup (persistent currency). Rare, golden glow.
 
-var volt_value: int = 1
+var xp_value: int = 1
 var _attracted: bool = false
 var _attract_speed: float = 350.0
 var _target: Node3D = null
@@ -65,7 +65,7 @@ func attract_to(target: Node3D) -> void:
 	_target = target
 
 func collect() -> void:
-	GameManager.add_run_volts(volt_value)
+	GameManager.add_xp(xp_value)
 	var fx := Particles.pickup_collect(global_position, _color)
 	get_tree().current_scene.add_child(fx)
 	queue_free()

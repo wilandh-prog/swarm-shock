@@ -1,9 +1,10 @@
 extends Control
 ## Main menu with neon styling and animated elements.
 
-@onready var play_button: Button = $VBoxContainer/PlayButton
+@onready var wave_button: Button = $VBoxContainer/WaveButton
+@onready var mission_button: Button = $VBoxContainer/MissionButton
 @onready var upgrades_button: Button = $VBoxContainer/UpgradesButton
-@onready var volts_label: Label = $VoltsLabel
+@onready var xp_label: Label = $XPLabel
 @onready var title_label: Label = $VBoxContainer/TitleLabel
 @onready var upgrade_panel: PanelContainer = $UpgradePanel
 @onready var upgrade_list: VBoxContainer = $UpgradePanel/MarginContainer/VBoxContainer/UpgradeList
@@ -12,13 +13,14 @@ extends Control
 var _title_pulse: float = 0.0
 
 func _ready() -> void:
-	play_button.pressed.connect(_on_play_pressed)
+	wave_button.pressed.connect(_on_wave_pressed)
+	mission_button.pressed.connect(_on_mission_pressed)
 	upgrades_button.pressed.connect(_on_upgrades_pressed)
 	close_upgrades_button.pressed.connect(_on_close_upgrades)
-	GameManager.volts_changed.connect(_update_volts_display)
+	GameManager.xp_changed.connect(_update_xp_display)
 
 	upgrade_panel.visible = false
-	_update_volts_display(GameManager.volts)
+	_update_xp_display(GameManager.xp_total)
 	_apply_neon_theme()
 	_animate_in()
 
@@ -33,8 +35,10 @@ func _process(delta: float) -> void:
 func _apply_neon_theme() -> void:
 	var accent := Color(0.3, 0.7, 1.0)
 
-	# Play button (prominent)
-	_style_button(play_button, Color(0.2, 0.8, 0.4), Color(0.03, 0.1, 0.05, 0.9))
+	# Wave button (prominent)
+	_style_button(wave_button, Color(0.2, 0.8, 0.4), Color(0.03, 0.1, 0.05, 0.9))
+	# Mission button
+	_style_button(mission_button, Color(0.9, 0.6, 0.2), Color(0.1, 0.06, 0.02, 0.9))
 
 	# Upgrades button
 	_style_button(upgrades_button, accent, Color(0.03, 0.05, 0.12, 0.9))
@@ -87,9 +91,10 @@ func _make_btn_style(border_color: Color, bg_color: Color) -> StyleBoxFlat:
 
 func _animate_in() -> void:
 	title_label.modulate.a = 0.0
-	play_button.modulate.a = 0.0
+	wave_button.modulate.a = 0.0
+	mission_button.modulate.a = 0.0
 	upgrades_button.modulate.a = 0.0
-	volts_label.modulate.a = 0.0
+	xp_label.modulate.a = 0.0
 
 	var tween := create_tween().set_ease(Tween.EASE_OUT)
 	# Title drops in
@@ -97,15 +102,22 @@ func _animate_in() -> void:
 	tween.tween_property(title_label, "modulate:a", 1.0, 0.5)
 	tween.parallel().tween_property(title_label, "position:y", title_label.position.y + 40, 0.5).set_trans(Tween.TRANS_BACK)
 	# Buttons slide in
-	tween.tween_property(play_button, "modulate:a", 1.0, 0.25)
+	tween.tween_property(wave_button, "modulate:a", 1.0, 0.25)
+	tween.tween_property(mission_button, "modulate:a", 1.0, 0.2)
 	tween.tween_property(upgrades_button, "modulate:a", 1.0, 0.2)
-	tween.tween_property(volts_label, "modulate:a", 1.0, 0.2)
+	tween.tween_property(xp_label, "modulate:a", 1.0, 0.2)
 
-func _on_play_pressed() -> void:
-	# Fade out transition
+func _start_game(mode: String) -> void:
+	GameManager.game_mode = mode
 	var tween := create_tween()
 	tween.tween_property(self, "modulate:a", 0.0, 0.25)
 	tween.tween_callback(func(): get_tree().change_scene_to_file("res://scenes/game.tscn"))
+
+func _on_wave_pressed() -> void:
+	_start_game("wave")
+
+func _on_mission_pressed() -> void:
+	_start_game("mission")
 
 func _on_upgrades_pressed() -> void:
 	upgrade_panel.visible = true
@@ -127,11 +139,9 @@ func _populate_upgrades() -> void:
 		child.queue_free()
 
 	var stat_names := {
-		"max_health": "Max Health",
-		"move_speed": "Move Speed",
-		"pickup_range": "Pickup Range",
-		"damage_mult": "Damage",
-		"chain_range": "Chain Range",
+		"max_health": "Health",
+		"lock_speed": "Missiles",
+		"move_speed": "Speed",
 	}
 
 	for stat_key in stat_names:
@@ -146,8 +156,8 @@ func _populate_upgrades() -> void:
 
 		var cost := GameManager.get_upgrade_cost(stat_key)
 		var buy_button := Button.new()
-		buy_button.text = "%d V" % cost
-		buy_button.disabled = GameManager.volts < cost
+		buy_button.text = "%d XP" % cost
+		buy_button.disabled = GameManager.xp_total < cost
 		_style_button(buy_button, Color(1.0, 0.9, 0.2), Color(0.1, 0.08, 0.02, 0.9))
 		buy_button.pressed.connect(_on_buy_upgrade.bind(stat_key))
 		hbox.add_child(buy_button)
@@ -158,13 +168,13 @@ func _on_buy_upgrade(stat_key: String) -> void:
 	if GameManager.purchase_upgrade(stat_key):
 		_populate_upgrades()
 
-func _update_volts_display(amount: int) -> void:
-	if volts_label:
-		volts_label.text = "Volts: %d" % amount
+func _update_xp_display(amount: int) -> void:
+	if xp_label:
+		xp_label.text = "XP: %d" % amount
 		# Pulse on change
 		var tween := create_tween()
-		tween.tween_property(volts_label, "scale", Vector2(1.15, 1.15), 0.08)
-		tween.tween_property(volts_label, "scale", Vector2.ONE, 0.12)
+		tween.tween_property(xp_label, "scale", Vector2(1.15, 1.15), 0.08)
+		tween.tween_property(xp_label, "scale", Vector2.ONE, 0.12)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:

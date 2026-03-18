@@ -100,6 +100,7 @@ func _ready() -> void:
 	_setup_pickup_area()
 	_setup_hurt_area()
 	_setup_weapon_manager()
+	_apply_weapon_upgrades()
 	_setup_visuals()
 	_setup_audio()
 	_current_speed = move_speed
@@ -111,6 +112,13 @@ func _apply_base_stats() -> void:
 	pickup_range = GameManager.get_stat("pickup_range")
 	damage_mult = GameManager.get_stat("damage_mult")
 	chain_range = GameManager.get_stat("chain_range")
+
+func _apply_weapon_upgrades() -> void:
+	if weapon_manager:
+		var ls: float = GameManager.get_stat("lock_speed")
+		weapon_manager.lock_speed = ls
+		# Scale AGM lock speed proportionally (base 1.0 when lock_speed is 0.6)
+		weapon_manager.agm_lock_speed = 1.0 * (ls / 0.6)
 
 func _setup_collision() -> void:
 	var shape := SphereShape3D.new()

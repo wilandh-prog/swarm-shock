@@ -91,22 +91,22 @@ theme_override_colors/font_color = Color(0.3, 1.0, 0.5, 1)
 theme_override_font_sizes/font_size = 22
 text = "1"
 
-[node name="VoltsKey" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="XPKey" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer/StatsContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
-text = "Volts:"
+text = "XP:"
 
-[node name="VoltsValue" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="XPValue" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer/StatsContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1.0, 0.9, 0.2, 1)
 theme_override_font_sizes/font_size = 22
 text = "0"
 
-[node name="DoubleVoltsButton" type="Button" parent="PanelContainer/MarginContainer/VBoxContainer"]
+[node name="DoubleXPButton" type="Button" parent="PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 55)
 theme_override_font_sizes/font_size = 22
-text = "Watch Ad for 2x Volts"
+text = "Watch Ad for 2x XP"
 
 [node name="RetryButton" type="Button" parent="PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2

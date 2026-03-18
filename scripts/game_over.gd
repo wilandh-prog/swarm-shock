@@ -4,8 +4,8 @@ extends Control
 @onready var time_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/TimeValue
 @onready var kills_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/KillsValue
 @onready var level_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/LevelValue
-@onready var volts_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/VoltsValue
-@onready var double_volts_button: Button = $PanelContainer/MarginContainer/VBoxContainer/DoubleVoltsButton
+@onready var xp_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/XPValue
+@onready var double_xp_button: Button = $PanelContainer/MarginContainer/VBoxContainer/DoubleXPButton
 @onready var retry_button: Button = $PanelContainer/MarginContainer/VBoxContainer/RetryButton
 @onready var menu_button: Button = $PanelContainer/MarginContainer/VBoxContainer/MenuButton
 @onready var title_label: Label = $PanelContainer/MarginContainer/VBoxContainer/TitleLabel
@@ -15,20 +15,20 @@ var _doubled: bool = false
 
 # Animated counters
 var _display_kills: float = 0.0
-var _display_volts: float = 0.0
+var _display_xp: float = 0.0
 var _display_time: float = 0.0
 var _counter_speed: float = 0.0
 
 func _ready() -> void:
 	retry_button.pressed.connect(_on_retry)
 	menu_button.pressed.connect(_on_menu)
-	double_volts_button.pressed.connect(_on_double_volts)
+	double_xp_button.pressed.connect(_on_double_xp)
 
 	_run_stats = {
 		"time": GameManager.run_time,
 		"kills": GameManager.run_kills,
 		"level": GameManager.run_level,
-		"volts_earned": GameManager.run_volts_earned,
+		"xp_earned": GameManager.run_xp_earned,
 	}
 
 	_apply_neon_theme()
@@ -45,13 +45,13 @@ func _process(delta: float) -> void:
 	# Animate counters
 	_display_time = lerpf(_display_time, _run_stats.get("time", 0.0), speed * 0.1)
 	_display_kills = lerpf(_display_kills, float(_run_stats.get("kills", 0)), speed * 0.1)
-	_display_volts = lerpf(_display_volts, float(_run_stats.get("volts_earned", 0)), speed * 0.1)
+	_display_xp = lerpf(_display_xp, float(_run_stats.get("xp_earned", 0)), speed * 0.1)
 
 	var minutes := int(_display_time) / 60
 	var seconds := int(_display_time) % 60
 	time_label.text = "%02d:%02d" % [minutes, seconds]
 	kills_label.text = str(int(_display_kills))
-	volts_label.text = str(int(_display_volts))
+	xp_label.text = str(int(_display_xp))
 
 func _start_counter_animation() -> void:
 	# Level doesn't animate (just show it)
@@ -78,7 +78,7 @@ func _apply_neon_theme() -> void:
 	# Buttons
 	_style_button(retry_button, Color(0.2, 0.8, 0.4), Color(0.03, 0.1, 0.05, 0.9))
 	_style_button(menu_button, Color(0.5, 0.5, 0.6), Color(0.05, 0.05, 0.08, 0.9))
-	_style_button(double_volts_button, Color(1.0, 0.9, 0.2), Color(0.1, 0.08, 0.02, 0.9))
+	_style_button(double_xp_button, Color(1.0, 0.9, 0.2), Color(0.1, 0.08, 0.02, 0.9))
 
 func _style_button(btn: Button, border_color: Color, bg_color: Color) -> void:
 	btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
@@ -130,17 +130,17 @@ func _on_menu() -> void:
 	tween.tween_property(self, "modulate:a", 0.0, 0.2)
 	tween.tween_callback(func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
 
-func _on_double_volts() -> void:
+func _on_double_xp() -> void:
 	if _doubled:
 		return
 	GameManager.show_rewarded_ad(
 		func():
-			var bonus: int = _run_stats.get("volts_earned", 0)
-			GameManager.volts += bonus
-			_run_stats["volts_earned"] = _run_stats.get("volts_earned", 0) + bonus
-			_display_volts = float(_run_stats["volts_earned"]) * 0.5  # Reset for animation
-			double_volts_button.text = "Doubled!"
-			double_volts_button.disabled = true
+			var bonus: int = _run_stats.get("xp_earned", 0)
+			GameManager.xp_total += bonus
+			_run_stats["xp_earned"] = _run_stats.get("xp_earned", 0) + bonus
+			_display_xp = float(_run_stats["xp_earned"]) * 0.5  # Reset for animation
+			double_xp_button.text = "Doubled!"
+			double_xp_button.disabled = true
 			_doubled = true
 			SaveManager.save_all()
 			CrazySdk.happy_time(),

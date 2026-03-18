@@ -13,7 +13,7 @@ func _ready() -> void:
 
 func save_all() -> void:
 	var data := {
-		"volts": GameManager.volts,
+		"xp_total": GameManager.xp_total,
 		"unlocked_characters": GameManager.unlocked_characters,
 		"upgrade_levels": GameManager.upgrade_levels,
 		"selected_character": GameManager.selected_character,
@@ -52,8 +52,10 @@ func load_all() -> void:
 		return
 
 	var data: Dictionary = json.data
-	if data.has("volts"):
-		GameManager.volts = int(data["volts"])
+	if data.has("xp_total"):
+		GameManager.xp_total = int(data["xp_total"])
+	elif data.has("volts"):
+		GameManager.xp_total = int(data["volts"])
 	if data.has("unlocked_characters"):
 		GameManager.unlocked_characters.assign(data["unlocked_characters"])
 	if data.has("upgrade_levels"):

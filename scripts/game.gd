@@ -256,10 +256,14 @@ func _process(delta: float) -> void:
 	if _phase == GamePhase.TUTORIAL:
 		_update_tutorial(delta)
 	elif _phase == GamePhase.COMBAT:
+		var max_waves: int = WAVE_CONFIG.size() if GameManager.game_mode == "mission" else 999999
 		# Wave spawning
-		if _current_wave < WAVE_CONFIG.size():
+		if _current_wave < max_waves:
 			if not _wave_spawned:
-				_spawn_wave_from_config(_current_wave)
+				if _current_wave < WAVE_CONFIG.size():
+					_spawn_wave_from_config(_current_wave)
+				else:
+					_spawn_wave_generated(_current_wave)
 				_wave_spawned = true
 			elif _waiting_for_next_wave:
 				_wave_delay_timer += delta
@@ -273,8 +277,8 @@ func _process(delta: float) -> void:
 				_wave_delay_timer = 0.0
 				awacs_message("AREA CLEAR. STANDBY.", 3.0)
 
-		# Landing trigger: all waves done and all enemies dead
-		if _current_wave >= WAVE_CONFIG.size() and enemy_container.get_child_count() == 0:
+		# Landing trigger: mission mode only, all waves done and all enemies dead
+		if GameManager.game_mode == "mission" and _current_wave >= WAVE_CONFIG.size() and enemy_container.get_child_count() == 0:
 			awacs_message("ALL TARGETS DOWN. RTB -- CARRIER AHEAD.", 4.0)
 			_begin_landing_sequence()
 
@@ -299,7 +303,10 @@ func _process(delta: float) -> void:
 	if _phase == GamePhase.TUTORIAL:
 		hud.set_wave_info(0, 0)
 	elif _phase == GamePhase.COMBAT:
-		hud.set_wave_info(mini(_current_wave + 1, WAVE_CONFIG.size()), WAVE_CONFIG.size())
+		if GameManager.game_mode == "wave":
+			hud.set_wave_info(_current_wave + 1, 0)
+		else:
+			hud.set_wave_info(mini(_current_wave + 1, WAVE_CONFIG.size()), WAVE_CONFIG.size())
 	elif _phase in [GamePhase.MISSION_2_LAUNCH, GamePhase.MISSION_2_COMBAT]:
 		var destroyed: int = _ships_total - enemy_container.get_child_count()
 		hud.set_wave_info(maxi(destroyed, 0), _ships_total)
@@ -452,10 +459,50 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 			enemy_container.add_child(enemy)
 			enemy.global_position = spawn_pos
 
+func _spawn_wave_generated(wave_index: int) -> void:
+	if not enemy_scene or not is_instance_valid(player):
+		return
+
+	# Very slow scaling: +1 enemy every 5 waves, TANK from wave 12
+	var base_count: int = 2 + wave_index / 5
+	var difficulty_mult: float = 1.0 + wave_index * 0.03
+
+	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)
+
+	# Build enemy composition with slow scaling
+	var enemies_to_spawn: Array[int] = []  # array of EnemyType values
+	for i in base_count:
+		var roll: float = randf()
+		if wave_index >= 12 and roll < 0.10:
+			enemies_to_spawn.append(2)  # TANK
+		elif wave_index >= 6 and roll < 0.25:
+			enemies_to_spawn.append(3)  # SWARM
+		elif roll < 0.45:
+			enemies_to_spawn.append(1)  # FAST
+		else:
+			enemies_to_spawn.append(0)  # BASIC
+
+	for enemy_type_val in enemies_to_spawn:
+		var angle := randf() * TAU
+		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
+		var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
+
+		var enemy: Area3D = enemy_scene.instantiate()
+		enemy.target = player
+		enemy.configure(enemy_type_val, difficulty_mult)
+
+		var to_player := player.global_position - spawn_pos
+		to_player.y = 0.0
+		enemy._heading = atan2(to_player.x, -to_player.z)
+
+		enemy.enemy_died.connect(_on_enemy_died)
+		enemy_container.add_child(enemy)
+		enemy.global_position = spawn_pos
+
 # --- Enemy death ---
 
-func _on_enemy_died(pos: Vector3, _xp_value: int) -> void:
-	# Pickups disabled for now
+func _on_enemy_died(pos: Vector3, xp_value: int) -> void:
+	GameManager.add_xp(xp_value)
 	if _splash_sound:
 		_splash_sound.play()
 	_try_chain_lightning(pos)

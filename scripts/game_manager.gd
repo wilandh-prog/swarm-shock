@@ -3,11 +3,11 @@ extends Node
 
 signal run_started
 signal run_ended(stats: Dictionary)
-signal volts_changed(amount: int)
+signal xp_changed(amount: int)
 signal player_leveled_up(level: int)
 
 # --- Meta-progression (persists between runs) ---
-var volts: int = 0 : set = _set_volts
+var xp_total: int = 0 : set = _set_xp_total
 var unlocked_characters: Array[String] = ["spark"]  # default character
 var base_stats: Dictionary = {
 	"max_health": 100.0,
@@ -15,6 +15,7 @@ var base_stats: Dictionary = {
 	"pickup_range": 80.0,
 	"damage_mult": 1.0,
 	"chain_range": 120.0,
+	"lock_speed": 0.6,
 }
 var upgrade_levels: Dictionary = {
 	"max_health": 0,
@@ -22,6 +23,7 @@ var upgrade_levels: Dictionary = {
 	"pickup_range": 0,
 	"damage_mult": 0,
 	"chain_range": 0,
+	"lock_speed": 0,
 }
 var selected_character: String = "spark"
 
@@ -42,6 +44,9 @@ func register_flare(f: Area3D) -> void:
 	flares_active.append(f)
 	f.tree_exiting.connect(func(): flares_active.erase(f))
 
+# --- Game mode ---
+var game_mode: String = "mission"  # "wave" or "mission"
+
 # --- Current run state ---
 var run_active: bool = false
 var run_time: float = 0.0
@@ -49,7 +54,7 @@ var run_kills: int = 0
 var run_level: int = 1
 var run_xp: int = 0
 var run_xp_to_next: int = 10
-var run_volts_earned: int = 0
+var run_xp_earned: int = 0
 
 # --- Ad timing ---
 var _last_ad_time: float = 0.0
@@ -76,7 +81,7 @@ func start_run() -> void:
 	run_level = 1
 	run_xp = 0
 	run_xp_to_next = 10
-	run_volts_earned = 0
+	run_xp_earned = 0
 	_first_gameplay = false
 	CrazySdk.gameplay_start()
 	run_started.emit()
@@ -88,9 +93,9 @@ func end_run() -> void:
 		"time": run_time,
 		"kills": run_kills,
 		"level": run_level,
-		"volts_earned": run_volts_earned,
+		"xp_earned": run_xp_earned,
 	}
-	volts += run_volts_earned
+	xp_total += run_xp_earned
 	SaveManager.save_all()
 	run_ended.emit(stats)
 
@@ -98,6 +103,7 @@ func end_run() -> void:
 
 func add_xp(amount: int) -> void:
 	run_xp += amount
+	run_xp_earned += amount
 	while run_xp >= run_xp_to_next:
 		run_xp -= run_xp_to_next
 		run_level += 1
@@ -109,9 +115,6 @@ func _calc_xp_requirement(level: int) -> int:
 
 func add_kill() -> void:
 	run_kills += 1
-
-func add_run_volts(amount: int) -> void:
-	run_volts_earned += amount
 
 # --- Meta upgrades ---
 
@@ -126,11 +129,11 @@ func get_upgrade_cost(stat_name: String) -> int:
 
 func purchase_upgrade(stat_name: String) -> bool:
 	var cost := get_upgrade_cost(stat_name)
-	if volts < cost:
+	if xp_total < cost:
 		return false
 	if not upgrade_levels.has(stat_name):
 		return false
-	volts -= cost
+	xp_total -= cost
 	upgrade_levels[stat_name] += 1
 	SaveManager.save_all()
 	return true
@@ -154,6 +157,6 @@ func show_rewarded_ad(on_reward: Callable, on_skip: Callable) -> void:
 
 # --- Setters ---
 
-func _set_volts(value: int) -> void:
-	volts = value
-	volts_changed.emit(volts)
+func _set_xp_total(value: int) -> void:
+	xp_total = value
+	xp_changed.emit(xp_total)

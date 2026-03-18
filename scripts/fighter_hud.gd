@@ -595,10 +595,12 @@ func _draw_wave_indicator(ss: Vector2) -> void:
 		y += 18.0
 
 	var text: String
-	if wave_total <= 0:
+	if wave_current <= 0 and wave_total <= 0:
 		text = "TUTORIAL"
 	elif mission_label != "":
 		text = "SHIP %d/%d" % [wave_current, wave_total]
+	elif wave_total <= 0:
+		text = "WAVE %d" % wave_current
 	else:
 		text = "WAVE %d/%d" % [wave_current, wave_total]
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, HUD_GREEN_DIM)

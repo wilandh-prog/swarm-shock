@@ -3,9 +3,10 @@ extends CanvasLayer
 
 @onready var time_label: Label = $TopBar/TimeLabel
 @onready var kills_label: Label = $TopBar/KillsLabel
+@onready var health_label: Label = $TopBar/HealthLabel
 @onready var level_label: Label = $TopBar/LevelLabel
 @onready var xp_bar: ProgressBar = $TopBar/XPBar
-@onready var volts_label: Label = $TopBar/VoltsLabel
+@onready var xp_label: Label = $TopBar/XPLabel
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var upgrade_panel: PanelContainer = $UpgradePanel
 @onready var upgrade_buttons: VBoxContainer = $UpgradePanel/MarginContainer/VBoxContainer/UpgradeButtons
@@ -113,7 +114,7 @@ func update_display() -> void:
 	var minutes := int(GameManager.run_time) / 60
 	var seconds := int(GameManager.run_time) % 60
 	time_label.text = "%02d:%02d" % [minutes, seconds]
-	volts_label.text = "V: %d" % GameManager.run_volts_earned
+	xp_label.text = "XP: %d" % GameManager.run_xp_earned
 
 	# Animated kill counter
 	if GameManager.run_kills != _prev_kills:
@@ -133,22 +134,26 @@ func update_display() -> void:
 	_display_xp = lerpf(_display_xp, target_xp, 0.15)
 	xp_bar.value = _display_xp
 
-	# Smooth health bar with color
+	# Smooth health display
 	if _player and is_instance_valid(_player):
 		_display_health = lerpf(_display_health, _player.health, 0.15)
 		health_bar.max_value = _player.max_health
 		health_bar.value = _display_health
 
-		# Health bar color: green → yellow → red
+		# Health label in top bar with color
+		health_label.text = "HP: %d" % int(_display_health)
 		var hp_frac: float = _display_health / _player.max_health
+		if hp_frac > 0.6:
+			health_label.add_theme_color_override("font_color", Color(0.2, 0.9, 0.3))
+		elif hp_frac > 0.3:
+			health_label.add_theme_color_override("font_color", Color(0.9, 0.8, 0.2))
+		else:
+			health_label.add_theme_color_override("font_color", Color(0.9, 0.2, 0.2))
+
+		# Health bar color matches
 		var hp_fill: StyleBoxFlat = health_bar.get_theme_stylebox("fill") as StyleBoxFlat
 		if hp_fill:
-			if hp_frac > 0.6:
-				hp_fill.bg_color = Color(0.2, 0.9, 0.3)
-			elif hp_frac > 0.3:
-				hp_fill.bg_color = Color(0.9, 0.8, 0.2)
-			else:
-				hp_fill.bg_color = Color(0.9, 0.2, 0.2)
+			hp_fill.bg_color = health_label.get_theme_color("font_color")
 
 func _on_health_changed(current: float, maximum: float) -> void:
 	pass  # Handled by smooth update in update_display
@@ -158,35 +163,7 @@ func _on_health_changed(current: float, maximum: float) -> void:
 func _build_upgrade_pool() -> void:
 	_upgrade_pool = [
 		{
-			"id": "damage_up", "name": "Damage +15%",
-			"description": "All weapons deal 15% more damage",
-			"apply": func():
-				if _player: _player.damage_mult *= 1.15,
-			"repeatable": true,
-		},
-		{
-			"id": "speed_up", "name": "Speed +12%",
-			"description": "Move faster",
-			"apply": func():
-				if _player: _player.move_speed *= 1.12,
-			"repeatable": true,
-		},
-		{
-			"id": "chain_range_up", "name": "Chain Range +25%",
-			"description": "Lightning chains reach further",
-			"apply": func():
-				if _player: _player.chain_range *= 1.25,
-			"repeatable": true,
-		},
-		{
-			"id": "chain_damage_up", "name": "Chain Damage +30%",
-			"description": "Chain lightning deals more damage",
-			"apply": func():
-				if _player: _player.chain_damage_mult *= 1.3,
-			"repeatable": true,
-		},
-		{
-			"id": "health_up", "name": "Max HP +25",
+			"id": "health_up", "name": "REPAIR +25 HP",
 			"description": "Increase maximum health and heal",
 			"apply": func():
 				if _player:
@@ -194,111 +171,15 @@ func _build_upgrade_pool() -> void:
 					_player.heal(25.0),
 			"repeatable": true,
 		},
-		{
-			"id": "pickup_range_up", "name": "Pickup Range +30%",
-			"description": "Attract pickups from further away",
-			"apply": func():
-				if _player: _player.pickup_range *= 1.3,
-			"repeatable": true,
-		},
-		{
-			"id": "fire_rate_up", "name": "Fire Rate +12%",
-			"description": "All weapons fire faster",
-			"apply": func():
-				if _player: _player.fire_rate_mult *= 1.12,
-			"repeatable": true,
-		},
-		{
-			"id": "projectile_up", "name": "+1 Projectile",
-			"description": "All weapons fire an extra projectile",
-			"apply": func():
-				if _player: _player.projectile_count_bonus += 1,
-			"repeatable": true,
-		},
-		{
-			"id": "weapon_spark_burst", "name": "NEW: Spark Burst",
-			"description": "Fires projectiles in all directions",
-			"apply": func():
-				if _player and _player.weapon_manager:
-					_player.weapon_manager.add_weapon("spark_burst"),
-			"repeatable": false,
-		},
-		{
-			"id": "weapon_piercing_ray", "name": "NEW: Piercing Ray",
-			"description": "High damage beam that pierces enemies",
-			"apply": func():
-				if _player and _player.weapon_manager:
-					_player.weapon_manager.add_weapon("piercing_ray"),
-			"repeatable": false,
-		},
 	]
 
 func show_upgrade_selection() -> void:
-	upgrade_panel.visible = true
-
-	# Animate panel in
-	upgrade_panel.modulate.a = 0.0
-	upgrade_panel.scale = Vector2(0.8, 0.8)
-	upgrade_panel.pivot_offset = upgrade_panel.size / 2.0
-	var panel_tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	panel_tween.tween_property(upgrade_panel, "modulate:a", 1.0, 0.2)
-	panel_tween.parallel().tween_property(upgrade_panel, "scale", Vector2.ONE, 0.3)
-
-	# Clear old buttons
-	for child in upgrade_buttons.get_children():
-		child.queue_free()
-
-	# Build valid options
-	var valid: Array[Dictionary] = []
-	for upgrade in _upgrade_pool:
-		if upgrade["repeatable"]:
-			valid.append(upgrade)
-		elif not _is_upgrade_taken(upgrade["id"]):
-			valid.append(upgrade)
-
-	valid.shuffle()
-	var choices := valid.slice(0, mini(3, valid.size()))
-
-	# Create styled buttons with staggered animation
-	for i in choices.size():
-		var upgrade: Dictionary = choices[i]
-		var btn := Button.new()
-		btn.text = upgrade["name"]
-		btn.tooltip_text = upgrade["description"]
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size.y = 65
-		btn.add_theme_font_size_override("font_size", 22)
-		btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
-		btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
-
-		# Neon button styles
-		var accent: Color = Color(0.3, 0.7, 1.0)
-		btn.add_theme_stylebox_override("normal",
-			_create_button_style(accent, Color(0.05, 0.08, 0.18, 0.9)))
-		btn.add_theme_stylebox_override("hover",
-			_create_button_style(accent.lightened(0.3), Color(0.08, 0.12, 0.25, 0.95)))
-		btn.add_theme_stylebox_override("pressed",
-			_create_button_style(Color.WHITE, Color(0.12, 0.18, 0.35, 1.0)))
-
-		btn.pressed.connect(_on_upgrade_chosen.bind(upgrade))
-		upgrade_buttons.add_child(btn)
-
-		# Staggered slide-in
-		btn.modulate.a = 0.0
-		btn.position.x = 50.0
-		var btn_tween := create_tween().set_ease(Tween.EASE_OUT)
-		btn_tween.tween_property(btn, "modulate:a", 1.0, 0.15).set_delay(0.1 * i)
-		btn_tween.parallel().tween_property(btn, "position:x", 0.0, 0.2).set_delay(0.1 * i)
-
-func _on_upgrade_chosen(upgrade: Dictionary) -> void:
-	upgrade["apply"].call()
-	if not upgrade["repeatable"]:
-		_mark_upgrade_taken(upgrade["id"])
+	# Only one upgrade (health) — apply automatically, no panel needed
+	if _upgrade_pool.size() > 0:
+		_upgrade_pool[0]["apply"].call()
 
 	# Reset XP bar display for smooth animation
 	_display_xp = 0.0
-
-	upgrade_panel.visible = false
 	get_tree().paused = false
 
 func is_upgrade_open() -> bool:
@@ -414,7 +295,7 @@ func show_victory() -> void:
 	_add_stat_row(vbox, "TIME", "%02d:%02d" % [minutes, seconds])
 	_add_stat_row(vbox, "KILLS", str(GameManager.run_kills))
 	_add_stat_row(vbox, "LEVEL", str(GameManager.run_level))
-	_add_stat_row(vbox, "VOLTS", str(GameManager.run_volts_earned))
+	_add_stat_row(vbox, "XP EARNED", str(GameManager.run_xp_earned))
 
 	# Spacer
 	var spacer := Control.new()

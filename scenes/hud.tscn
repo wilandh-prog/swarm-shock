@@ -26,6 +26,12 @@ theme_override_colors/font_color = Color(1.0, 0.4, 0.4, 1)
 theme_override_font_sizes/font_size = 28
 text = "Kills: 0"
 
+[node name="HealthLabel" type="Label" parent="TopBar"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.9, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "HP: 100"
+
 [node name="LevelLabel" type="Label" parent="TopBar"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 0.7, 1.0, 1)
@@ -40,11 +46,11 @@ max_value = 100.0
 value = 0.0
 show_percentage = false
 
-[node name="VoltsLabel" type="Label" parent="TopBar"]
+[node name="XPLabel" type="Label" parent="TopBar"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1.0, 0.9, 0.2, 1)
 theme_override_font_sizes/font_size = 28
-text = "V: 0"
+text = "XP: 0"
 
 [node name="HealthBar" type="ProgressBar" parent="."]
 offset_left = 20.0
