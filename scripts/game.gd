@@ -15,17 +15,34 @@ var _wave_spawned: bool = false
 const SPAWN_DISTANCE_MIN: float = 5000.0
 const SPAWN_DISTANCE_MAX: float = 8000.0
 const WAVE_DELAY: float = 3.0  # seconds between waves
+
+func _get_wave_config() -> Array[Dictionary]:
+	if GameManager.game_mode == "wave":
+		return WAVE_WAVE_CONFIG
+	return MISSION_WAVE_CONFIG
 var _wave_delay_timer: float = 0.0
 var _waiting_for_next_wave: bool = false
 
 # Wave config: each wave is a dictionary of EnemyType -> count
 # Difficulty scales with wave index
-const WAVE_CONFIG: Array[Dictionary] = [
+# Mission mode waves (tighter progression)
+const MISSION_WAVE_CONFIG: Array[Dictionary] = [
 	{"BASIC": 1},
 	{"BASIC": 2},
 	{"BASIC": 2, "FAST": 1},
 	{"BASIC": 1, "FAST": 2, "SWARM": 1},
 	{"BASIC": 1, "FAST": 2, "SWARM": 3},
+]
+# Wave mode waves (gentler early game)
+const WAVE_WAVE_CONFIG: Array[Dictionary] = [
+	{"BASIC": 1},
+	{"BASIC": 1},
+	{"BASIC": 2},
+	{"BASIC": 2},
+	{"BASIC": 2, "FAST": 1},
+	{"BASIC": 2, "FAST": 1},
+	{"BASIC": 2, "FAST": 2},
+	{"BASIC": 1, "FAST": 2, "SWARM": 1},
 ]
 
 # Tutorial
@@ -256,11 +273,12 @@ func _process(delta: float) -> void:
 	if _phase == GamePhase.TUTORIAL:
 		_update_tutorial(delta)
 	elif _phase == GamePhase.COMBAT:
-		var max_waves: int = WAVE_CONFIG.size() if GameManager.game_mode == "mission" else 999999
+		var wc: Array[Dictionary] = _get_wave_config()
+		var max_waves: int = wc.size() if GameManager.game_mode == "mission" else 999999
 		# Wave spawning
 		if _current_wave < max_waves:
 			if not _wave_spawned:
-				if _current_wave < WAVE_CONFIG.size():
+				if _current_wave < wc.size():
 					_spawn_wave_from_config(_current_wave)
 				else:
 					_spawn_wave_generated(_current_wave)
@@ -278,7 +296,7 @@ func _process(delta: float) -> void:
 				awacs_message("AREA CLEAR. STANDBY.", 3.0)
 
 		# Landing trigger: mission mode only, all waves done and all enemies dead
-		if GameManager.game_mode == "mission" and _current_wave >= WAVE_CONFIG.size() and enemy_container.get_child_count() == 0:
+		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0:
 			awacs_message("ALL TARGETS DOWN. RTB -- CARRIER AHEAD.", 4.0)
 			_begin_landing_sequence()
 
@@ -306,7 +324,8 @@ func _process(delta: float) -> void:
 		if GameManager.game_mode == "wave":
 			hud.set_wave_info(_current_wave + 1, 0)
 		else:
-			hud.set_wave_info(mini(_current_wave + 1, WAVE_CONFIG.size()), WAVE_CONFIG.size())
+			var mc: Array[Dictionary] = _get_wave_config()
+			hud.set_wave_info(mini(_current_wave + 1, mc.size()), mc.size())
 	elif _phase in [GamePhase.MISSION_2_LAUNCH, GamePhase.MISSION_2_COMBAT]:
 		var destroyed: int = _ships_total - enemy_container.get_child_count()
 		hud.set_wave_info(maxi(destroyed, 0), _ships_total)
@@ -420,8 +439,10 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 	if not enemy_scene or not is_instance_valid(player):
 		return
 
-	var config: Dictionary = WAVE_CONFIG[wave_index]
-	var difficulty_mult: float = 1.0 + wave_index * 0.15
+	var wc: Array[Dictionary] = _get_wave_config()
+	var config: Dictionary = wc[wave_index]
+	var diff_rate: float = 0.05 if GameManager.game_mode == "wave" else 0.15
+	var difficulty_mult: float = 1.0 + wave_index * diff_rate
 
 	# AWACS messages for wave start
 	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)
