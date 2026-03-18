@@ -100,7 +100,7 @@ const LANDING_FAIL_ALT: float = 80.0     # altitude window for fail check
 var _ships_total: int = 0
 var _convoy_heading: float = 0.0
 var _m2_ships_warned: bool = false
-const CONVOY_SHIP_COUNT: int = 4
+const CONVOY_SHIP_COUNT: int = 3
 const CONVOY_SPEED: float = 60.0
 const CONVOY_SPACING: float = 800.0
 const CONVOY_LATERAL: float = 300.0
@@ -659,7 +659,9 @@ func _update_landing(_delta: float) -> void:
 			player._target_altitude = maxf(player._target_altitude, min_alt)
 
 	var alt_diff: float = player.global_position.y - _carrier_deck_y
-	var heading_diff: float = absf(fposmod(player._heading - _carrier_heading + PI, TAU) - PI)
+	var heading_raw: float = absf(fposmod(player._heading - _carrier_heading + PI, TAU) - PI)
+	# Accept approach from either end of the carrier (0° or 180° offset)
+	var heading_diff: float = minf(heading_raw, absf(heading_raw - PI))
 
 	# Check landing conditions — speed threshold relative to cruise speed
 	var landing_speed_max: float = player.move_speed * LANDING_SPEED_FACTOR
