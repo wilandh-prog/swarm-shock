@@ -17,6 +17,11 @@ var _smooth_g: float = 1.0
 # AWACS radio
 var awacs_text: String = ""
 var _awacs_alpha: float = 0.0
+var _awacs_reveal: float = 0.0  # character reveal progress (typewriter)
+var _awacs_prev_text: String = ""  # track text changes to reset reveal
+var _awacs_glitch_time: float = 0.0  # rolling timer for glitch flicker
+const AWACS_CHARS_PER_SEC: float = 30.0  # typewriter speed
+const AWACS_GLITCH_CHARS: String = "#%&@!$^*~=+"
 var wave_current: int = 0
 var wave_total: int = 0
 var speed_display_divisor: float = 1.0
@@ -42,11 +47,16 @@ func _process(delta: float) -> void:
 	var turn_frac: float = absf(player._turn_speed) / player.MAX_TURN_RATE
 	var speed_frac: float = player._current_speed / player.move_speed
 	_smooth_g = lerpf(_smooth_g, 1.0 + 7.0 * turn_frac * speed_frac, 5.0 * delta)
-	# AWACS fade out
+	# AWACS fade out + typewriter
 	if awacs_text == "":
 		_awacs_alpha = move_toward(_awacs_alpha, 0.0, 2.0 * delta)
 	else:
 		_awacs_alpha = move_toward(_awacs_alpha, 1.0, 4.0 * delta)
+		if awacs_text != _awacs_prev_text:
+			_awacs_reveal = 0.0
+			_awacs_prev_text = awacs_text
+		_awacs_reveal += AWACS_CHARS_PER_SEC * delta
+	_awacs_glitch_time += delta
 	# Tutorial fade
 	if tutorial_lines.size() > 0:
 		_tutorial_alpha = move_toward(_tutorial_alpha, 1.0, 3.0 * delta)
@@ -632,16 +642,34 @@ func _draw_awacs_radio(ss: Vector2) -> void:
 		return
 	var cx: float = ss.x * 0.5
 	var y: float = ss.y * 0.15
-	var text: String = ">> " + awacs_text
-	var box_w: float = maxf(font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 18).x + 40.0, 280.0)
+	var full_text: String = awacs_text
+	# Typewriter reveal with glitch chars at the frontier
+	var revealed: int = mini(int(_awacs_reveal), full_text.length())
+	var display: String = full_text.substr(0, revealed)
+	# Add 1-2 garbled characters at the reveal frontier
+	if revealed < full_text.length():
+		var glitch_count := mini(2, full_text.length() - revealed)
+		for i in glitch_count:
+			var idx := int((_awacs_glitch_time * 37.0 + float(i) * 13.0)) % AWACS_GLITCH_CHARS.length()
+			display += AWACS_GLITCH_CHARS[idx]
+	var text: String = ">> " + display
+	var box_w: float = maxf(font.get_string_size(">> " + full_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 18).x + 40.0, 280.0)
 	var box_h: float = 36.0
 	var box_rect := Rect2(cx - box_w * 0.5, y - box_h * 0.5, box_w, box_h)
 	# Dark background
 	draw_rect(box_rect, Color(0.0, 0.04, 0.0, 0.7 * _awacs_alpha))
-	# Green border
-	draw_rect(box_rect, Color(0.0, 1.0, 0.255, 0.6 * _awacs_alpha), false, 1.5)
-	# Text
-	draw_string(font, Vector2(cx - box_w * 0.5 + 12, y + 6), text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 24, 18, Color(0.0, 1.0, 0.255, 0.95 * _awacs_alpha))
+	# Scanline noise overlay
+	var scanline_count := int(box_h / 3.0)
+	for i in scanline_count:
+		var sy: float = box_rect.position.y + float(i) * 3.0
+		var noise_a: float = 0.04 + 0.03 * sin(_awacs_glitch_time * 20.0 + float(i) * 7.0)
+		draw_rect(Rect2(box_rect.position.x, sy, box_w, 1.0), Color(0.0, 1.0, 0.3, noise_a * _awacs_alpha))
+	# Green border with slight flicker
+	var border_a: float = 0.5 + 0.15 * sin(_awacs_glitch_time * 11.0)
+	draw_rect(box_rect, Color(0.0, 1.0, 0.255, border_a * _awacs_alpha), false, 1.5)
+	# Text with subtle brightness flicker
+	var text_a: float = 0.85 + 0.1 * sin(_awacs_glitch_time * 17.0)
+	draw_string(font, Vector2(cx - box_w * 0.5 + 12, y + 6), text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 24, 18, Color(0.0, 1.0, 0.255, text_a * _awacs_alpha))
 
 # --- Wave indicator (top right) ---
 

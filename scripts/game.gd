@@ -366,6 +366,28 @@ func _update_awacs(delta: float) -> void:
 	if _awacs_current.size() == 0 and _awacs_queue.size() > 0:
 		_awacs_current = _awacs_queue.pop_front()
 		_awacs_timer = _awacs_current.get("duration", 4.0)
+		_speak_awacs(_awacs_current.get("text", ""))
+
+func _speak_awacs(text: String) -> void:
+	var clean := text
+	# Strip key hints like [F], [G], [SPACE]
+	var regex := RegEx.new()
+	regex.compile("\\[\\w+\\]")
+	clean = regex.sub(clean, "", true)
+	# Expand military abbreviations for natural speech
+	clean = clean.replace("RTB", "return to base")
+	clean = clean.replace("--", ",")
+	clean = clean.replace("  ", " ")
+	clean = clean.strip_edges()
+	if clean.is_empty():
+		return
+	# Add periods between words for choppy, clipped radio cadence
+	var words := clean.split(" ", false)
+	clean = ". ".join(words) + "."
+	# Scale rate up for longer messages so they don't drag
+	var rate := 1.6 + clampf(float(words.size() - 3) * 0.12, 0.0, 1.0)
+	# pitch 1.5 = tinny radio, volume 70
+	DisplayServer.tts_speak(clean, "", 70, 1.5, rate)
 
 # --- Tutorial ---
 
