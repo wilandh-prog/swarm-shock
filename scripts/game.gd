@@ -52,6 +52,11 @@ var _tutorial_timer: float = 0.0
 var _tutorial_enemy_1_dead: bool = false
 var _tutorial_enemy_2_spawned: bool = false
 var _tutorial_missile_warned: bool = false
+var _tutorial_shown_flight: bool = false
+var _tutorial_shown_lock: bool = false
+var _tutorial_shown_missile_fire: bool = false
+var _tutorial_shown_gun: bool = false
+var _tutorial_shown_flare: bool = false
 
 # AWACS message queue
 var _awacs_queue: Array[Dictionary] = []
@@ -273,6 +278,9 @@ func _process(delta: float) -> void:
 	if _phase == GamePhase.TUTORIAL:
 		_update_tutorial(delta)
 	elif _phase == GamePhase.COMBAT:
+		# Contextual tutorial text during early waves
+		if _current_wave < 2:
+			_update_tutorial_text()
 		var wc: Array[Dictionary] = _get_wave_config()
 		var max_waves: int = wc.size() if GameManager.game_mode == "mission" else 999999
 		# Wave spawning
@@ -366,7 +374,15 @@ func _update_tutorial(delta: float) -> void:
 
 	match _tutorial_step:
 		TutorialStep.INTRO:
-			if _tutorial_timer >= 2.0:
+			# Show flight controls at start
+			if not _tutorial_shown_flight:
+				hud.set_tutorial_text(PackedStringArray([
+					"[A] / [D]  TURN",
+					"[W] / [S]  SPEED",
+					"[UP] / [DOWN]  ALTITUDE",
+				]))
+				_tutorial_shown_flight = true
+			if _tutorial_timer >= 4.0:
 				awacs_message("BANDIT APPROACHING. STANDBY.", 4.0)
 				_spawn_tutorial_enemy(1, true, 150.0)  # 1 missile, tutorial mode, tanky
 				_tutorial_step = TutorialStep.WAIT_FLARE
@@ -376,12 +392,12 @@ func _update_tutorial(delta: float) -> void:
 			# Check for incoming missiles to show flare hint
 			if not _tutorial_missile_warned:
 				if GameManager.enemy_missiles.size() > 0:
-					awacs_message("MISSILE INBOUND! DEPLOY FLARE [F]", 5.0)
+					awacs_message("MISSILE INBOUND! FLARE [F]!", 5.0)
 					_tutorial_missile_warned = true
 
 			# When enemy 1 is dead, move to gun phase
 			if _tutorial_enemy_1_dead and not _tutorial_enemy_2_spawned:
-				awacs_message("SPLASH ONE. USE GUN [G] ON NEXT TARGET.", 5.0)
+				awacs_message("SPLASH ONE. USE GUN ON NEXT TARGET.", 5.0)
 				_tutorial_step = TutorialStep.WAIT_KILL_GUN
 				_tutorial_timer = 0.0
 
@@ -401,6 +417,72 @@ func _update_tutorial(delta: float) -> void:
 				_phase = GamePhase.COMBAT
 				_current_wave = 0
 				_wave_spawned = false
+
+	# Contextual tutorial text — runs every frame during tutorial + early waves
+	_update_tutorial_text()
+
+func _update_tutorial_text() -> void:
+	if not is_instance_valid(player):
+		return
+	var wm = player.weapon_manager
+	if not wm:
+		return
+
+	# Incoming missile → flare prompt (highest priority)
+	if GameManager.enemy_missiles.size() > 0:
+		hud.set_tutorial_text(PackedStringArray([
+			"MISSILE INCOMING!",
+			"PRESS [F] TO DEPLOY FLARES",
+		]))
+		_tutorial_shown_flare = true
+		return
+
+	# Full lock → fire prompt
+	if wm.locked_target and is_instance_valid(wm.locked_target):
+		hud.set_tutorial_text(PackedStringArray([
+			"TARGET LOCKED!",
+			"PRESS [SPACE] TO FIRE MISSILE",
+		]))
+		_tutorial_shown_missile_fire = true
+		return
+
+	# Tracking → lock explanation
+	if wm.tracking_target and is_instance_valid(wm.tracking_target) and wm.lock_progress < 1.0:
+		hud.set_tutorial_text(PackedStringArray([
+			"LOCKING ON...",
+			"AIM AT TARGET -- WAIT FOR LOCK",
+			"THEN PRESS [SPACE] TO FIRE MISSILE",
+		]))
+		_tutorial_shown_lock = true
+		return
+
+	# Gun phase
+	if _tutorial_step == TutorialStep.WAIT_KILL_GUN or _tutorial_shown_gun:
+		hud.set_tutorial_text(PackedStringArray([
+			"HOLD [G] TO FIRE GUN",
+			"AIM WITH THE PIPPER",
+		]))
+		_tutorial_shown_gun = true
+		return
+
+	# Default: show last relevant hint
+	if _tutorial_shown_flare:
+		hud.set_tutorial_text(PackedStringArray([
+			"[SPACE]  FIRE MISSILE",
+			"[G]  GUN    [F]  FLARES",
+		]))
+	elif _tutorial_shown_missile_fire or _tutorial_shown_lock:
+		hud.set_tutorial_text(PackedStringArray([
+			"AIM AT TARGET -- WAIT FOR LOCK",
+			"PRESS [SPACE] TO FIRE MISSILE",
+		]))
+	elif _tutorial_step == TutorialStep.INTRO:
+		return  # flight controls already showing
+	else:
+		hud.set_tutorial_text(PackedStringArray([
+			"FLY TOWARD THE ENEMY",
+			"AIM TO LOCK ON",
+		]))
 
 func _spawn_tutorial_enemy(missiles: int, tutorial: bool, hp_override: float = 0.0) -> void:
 	if not enemy_scene or not is_instance_valid(player):
@@ -443,6 +525,10 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 	var config: Dictionary = wc[wave_index]
 	var diff_rate: float = 0.05 if GameManager.game_mode == "wave" else 0.15
 	var difficulty_mult: float = 1.0 + wave_index * diff_rate
+
+	# Clear tutorial text at wave 3
+	if wave_index >= 2:
+		hud.set_tutorial_text(PackedStringArray())
 
 	# AWACS messages for wave start
 	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)

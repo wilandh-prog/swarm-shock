@@ -22,6 +22,10 @@ var wave_total: int = 0
 var speed_display_divisor: float = 1.0
 var mission_label: String = ""
 
+# Tutorial text (large, persistent)
+var tutorial_lines: PackedStringArray = []
+var _tutorial_alpha: float = 0.0
+
 # Landing guidance
 var landing_active: bool = false
 var landing_carrier: Node3D = null
@@ -43,6 +47,11 @@ func _process(delta: float) -> void:
 		_awacs_alpha = move_toward(_awacs_alpha, 0.0, 2.0 * delta)
 	else:
 		_awacs_alpha = move_toward(_awacs_alpha, 1.0, 4.0 * delta)
+	# Tutorial fade
+	if tutorial_lines.size() > 0:
+		_tutorial_alpha = move_toward(_tutorial_alpha, 1.0, 3.0 * delta)
+	else:
+		_tutorial_alpha = move_toward(_tutorial_alpha, 0.0, 2.0 * delta)
 	queue_redraw()
 
 func _draw() -> void:
@@ -66,6 +75,7 @@ func _draw() -> void:
 	_draw_agm_status(ss)
 	_draw_awacs_radio(ss)
 	_draw_wave_indicator(ss)
+	_draw_tutorial_text(ss)
 	if landing_active:
 		_draw_landing_guidance(ss)
 
@@ -558,6 +568,59 @@ func _draw_radar(ss: Vector2) -> void:
 	var font := ThemeDB.fallback_font
 	if font:
 		draw_string(font, Vector2(cx - 10, cy - RADAR_RADIUS - 5), "RDR", HORIZONTAL_ALIGNMENT_CENTER, 30, 11, HUD_GREEN_DIM)
+
+# --- Tutorial text (large, persistent, bottom center) ---
+
+const HUD_CYAN := Color(0.3, 0.9, 1.0, 0.95)
+
+func _draw_tutorial_text(ss: Vector2) -> void:
+	if _tutorial_alpha < 0.01:
+		return
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+
+	var line_count: int = tutorial_lines.size()
+	if line_count == 0 and _tutorial_alpha < 0.01:
+		return
+
+	var font_size: int = 28
+	var line_height: float = 38.0
+	var pad_x: float = 32.0
+	var pad_y: float = 16.0
+
+	# Position: lower-center, above the missile warning area
+	var cx: float = ss.x * 0.5
+	var total_h: float = float(line_count) * line_height + pad_y * 2.0
+
+	# Find widest line for box width
+	var max_w: float = 300.0
+	for line in tutorial_lines:
+		var lw: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+		if lw > max_w:
+			max_w = lw
+	var box_w: float = max_w + pad_x * 2.0
+	var y_bottom: float = ss.y - 180.0
+	var y_top: float = y_bottom - total_h
+
+	var alpha: float = _tutorial_alpha
+
+	# Background box
+	draw_rect(Rect2(cx - box_w * 0.5, y_top, box_w, total_h), Color(0.0, 0.03, 0.06, 0.7 * alpha))
+	# Cyan border with glow effect
+	draw_rect(Rect2(cx - box_w * 0.5, y_top, box_w, total_h), Color(0.3, 0.9, 1.0, 0.6 * alpha), false, 2.0)
+
+	# Draw each line centered
+	for i in line_count:
+		var line: String = tutorial_lines[i]
+		var lw: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+		var lx: float = cx - lw * 0.5
+		var ly: float = y_top + pad_y + float(i) * line_height + 28.0
+
+		# Shadow for readability
+		draw_string(font, Vector2(lx + 2, ly + 2), line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.0, 0.0, 0.0, 0.6 * alpha))
+		# Main text
+		draw_string(font, Vector2(lx, ly), line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.3, 0.9, 1.0, 0.95 * alpha))
 
 # --- AWACS radio (top center message) ---
 

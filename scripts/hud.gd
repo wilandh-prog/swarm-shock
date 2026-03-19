@@ -200,6 +200,10 @@ func set_awacs_message(text: String) -> void:
 		fighter_hud.awacs_text = text
 		fighter_hud._awacs_alpha = 1.0
 
+func set_tutorial_text(lines: PackedStringArray) -> void:
+	if fighter_hud:
+		fighter_hud.tutorial_lines = lines
+
 func set_wave_info(current: int, total: int) -> void:
 	if fighter_hud:
 		fighter_hud.wave_current = current
