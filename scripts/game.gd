@@ -301,20 +301,20 @@ func _process(delta: float) -> void:
 			elif enemy_container.get_child_count() == 0:
 				_waiting_for_next_wave = true
 				_wave_delay_timer = 0.0
-				awacs_message("AREA CLEAR. STANDBY.", 3.0)
+				awacs_message("PICTURE CLEAN. STANDBY FOR TASKING.", 3.0)
 
 		# Landing trigger: mission mode only, all waves done and all enemies dead
 		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0:
-			awacs_message("ALL TARGETS DOWN. RTB -- CARRIER AHEAD.", 4.0)
+			awacs_message("ALL TARGETS SPLASHED. RTB -- MARSHAL CARRIER BRC 270.", 4.0)
 			_begin_landing_sequence()
 
 	elif _phase == GamePhase.MISSION_2_COMBAT:
 		var ships_left: int = enemy_container.get_child_count()
 		if ships_left <= 2 and ships_left > 0 and not _m2_ships_warned:
-			awacs_message("%d SHIP%s REMAINING." % [ships_left, "" if ships_left == 1 else "S"], 3.0)
+			awacs_message("%d HOSTILE%s AFLOAT. PRESS ATTACK." % [ships_left, "" if ships_left == 1 else "S"], 3.0)
 			_m2_ships_warned = true
 		if _ships_total > 0 and ships_left == 0:
-			awacs_message("ALL SHIPS DESTROYED. RTB.", 4.0)
+			awacs_message("CONVOY NEUTRALIZED. RTB BINGO FUEL.", 4.0)
 			_begin_landing_sequence()
 
 	# Landing approach update
@@ -374,8 +374,11 @@ func _speak_awacs(text: String) -> void:
 	var regex := RegEx.new()
 	regex.compile("\\[\\w+\\]")
 	clean = regex.sub(clean, "", true)
-	# Expand military abbreviations for natural speech
-	clean = clean.replace("RTB", "return to base")
+	# Expand military abbreviations for natural TTS speech
+	clean = clean.replace("RTB", "R T B")
+	clean = clean.replace("BRAA", "brah")
+	clean = clean.replace("BRC", "B R C")
+	clean = clean.replace("CAT 1", "cat one")
 	clean = clean.replace("--", ",")
 	clean = clean.replace("  ", " ")
 	clean = clean.strip_edges()
@@ -405,7 +408,7 @@ func _update_tutorial(delta: float) -> void:
 				]))
 				_tutorial_shown_flight = true
 			if _tutorial_timer >= 4.0:
-				awacs_message("BANDIT APPROACHING. STANDBY.", 4.0)
+				awacs_message("TALLY ONE BANDIT BRAA 360. ENGAGED.", 4.0)
 				_spawn_tutorial_enemy(1, true, 150.0)  # 1 missile, tutorial mode, tanky
 				_tutorial_step = TutorialStep.WAIT_FLARE
 				_tutorial_timer = 0.0
@@ -414,12 +417,12 @@ func _update_tutorial(delta: float) -> void:
 			# Check for incoming missiles to show flare hint
 			if not _tutorial_missile_warned:
 				if GameManager.enemy_missiles.size() > 0:
-					awacs_message("MISSILE INBOUND! FLARE [F]!", 5.0)
+					awacs_message("SPIKE! DEFEND! CHAFF FLARE [F]!", 5.0)
 					_tutorial_missile_warned = true
 
 			# When enemy 1 is dead, move to gun phase
 			if _tutorial_enemy_1_dead and not _tutorial_enemy_2_spawned:
-				awacs_message("SPLASH ONE. USE GUN ON NEXT TARGET.", 5.0)
+				awacs_message("SPLASH ONE. BOGEY DOPE -- GUNS GUNS GUNS.", 5.0)
 				_tutorial_step = TutorialStep.WAIT_KILL_GUN
 				_tutorial_timer = 0.0
 
@@ -430,7 +433,7 @@ func _update_tutorial(delta: float) -> void:
 
 			# When all tutorial enemies dead
 			if _tutorial_enemy_2_spawned and enemy_container.get_child_count() == 0:
-				awacs_message("ALL HOSTILES DOWN. COMBAT BEGINS.", 3.0)
+				awacs_message("PICTURE CLEAR. ALPHA CHECK -- WEAPONS FREE.", 3.0)
 				_tutorial_step = TutorialStep.DONE
 				_tutorial_timer = 0.0
 
@@ -553,13 +556,15 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 		hud.set_tutorial_text(PackedStringArray())
 
 	# AWACS messages for wave start
-	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)
+	var bearing := (randi() % 36) * 10  # random bearing 0-350
+	var angels := 5 + randi() % 20  # altitude in thousands
+	awacs_message("PICTURE -- GROUP BULLSEYE %03d/%d ANGELS %d" % [bearing, 20 + randi() % 40, angels], 3.0)
 
 	# Special warnings for new enemy types
 	if wave_index == 2:
-		awacs_message("WARNING -- FAST MOVERS DETECTED", 3.0)
+		awacs_message("BOGEY DOPE -- FAST MOVERS BEARING %03d HOT" % bearing, 3.0)
 	elif wave_index == 3:
-		awacs_message("MULTIPLE CONTACTS. SWARM FORMATION.", 3.0)
+		awacs_message("GORILLA GROUP %03d -- MULTIPLE CONTACTS AZIMUTH" % bearing, 3.0)
 
 	# EnemyType enum mapping
 	var type_map := {
@@ -596,7 +601,9 @@ func _spawn_wave_generated(wave_index: int) -> void:
 	var base_count: int = 2 + wave_index / 5
 	var difficulty_mult: float = 1.0 + wave_index * 0.03
 
-	awacs_message("WAVE %d -- BANDITS INBOUND" % (wave_index + 1), 3.0)
+	var bearing := (randi() % 36) * 10
+	var angels := 5 + randi() % 20
+	awacs_message("PICTURE -- GROUPS BULLSEYE %03d ANGELS %d" % [bearing, angels], 3.0)
 
 	# Build enemy composition with slow scaling
 	var enemies_to_spawn: Array[int] = []  # array of EnemyType values
@@ -944,7 +951,7 @@ func _begin_mission_2() -> void:
 		_on_briefing_launch)
 
 func _on_briefing_launch() -> void:
-	awacs_message("MISSION 2 -- CONVOY INTERCEPT.", 4.0)
+	awacs_message("OVERLORD COPIES -- STRIKE PACKAGE ALPHA CLEARED HOT.", 4.0)
 	_catapult_launch()
 
 const MISSION_2_SPEED_MULT: float = 3.0
@@ -964,10 +971,10 @@ func _catapult_launch() -> void:
 		print("[M2] WARNING: hud.fighter_hud is null!")
 
 	EffectsManager.screen_flash(Color(1.0, 0.9, 0.7), 0.3)
-	awacs_message("CATAPULT -- BRACE!", 2.0)
+	awacs_message("SHOOTER READY -- CAT 1 LAUNCH!", 2.0)
 
 	await get_tree().create_timer(1.5).timeout
-	awacs_message("WEAPONS FREE. GOOD HUNTING.", 3.0)
+	awacs_message("FEET WET. WEAPONS FREE -- FOX MIKE ON GUARD.", 3.0)
 	_spawn_convoy()
 
 func _spawn_convoy() -> void:
@@ -1007,7 +1014,7 @@ func _spawn_convoy() -> void:
 		ship.target = player
 		ship.enemy_died.connect(_on_enemy_died)
 
-	awacs_message("%d HOSTILE SHIPS. ENGAGE." % CONVOY_SHIP_COUNT, 4.0)
+	awacs_message("MAGNUM -- %d SURFACE CONTACTS BEARING 090. ENGAGE." % CONVOY_SHIP_COUNT, 4.0)
 
 # --- Player events ---
 
