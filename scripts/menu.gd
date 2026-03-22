@@ -23,6 +23,7 @@ func _ready() -> void:
 	_update_xp_display(GameManager.xp_total)
 	_apply_neon_theme()
 	_animate_in()
+	CrazySdk.loading_stop()
 
 func _process(delta: float) -> void:
 	# Pulse title

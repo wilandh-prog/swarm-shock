@@ -78,6 +78,16 @@ func _ready() -> void:
 		_radar_blip_sound.bus = &"Master"
 		add_child(_radar_blip_sound)
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		if run_active:
+			get_tree().paused = true
+		AudioManager.mute_all()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if run_active:
+			get_tree().paused = false
+		AudioManager.unmute_all()
+
 func _process(delta: float) -> void:
 	if run_active:
 		run_time += delta

@@ -500,7 +500,7 @@ func _draw_flare_status(ss: Vector2) -> void:
 # --- Radar (bottom-left) ---
 
 const RADAR_RADIUS: float = 70.0
-const RADAR_RANGE_DEFAULT: float = 3000.0
+const RADAR_RANGE_DEFAULT: float = 10000.0
 const RADAR_RANGE_MISSION2: float = 250000.0
 var radar_range: float = RADAR_RANGE_DEFAULT
 

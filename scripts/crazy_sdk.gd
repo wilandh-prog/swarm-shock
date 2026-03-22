@@ -10,17 +10,22 @@ func _ready() -> void:
 		_init_sdk()
 
 func _init_sdk() -> void:
-	# The CrazyGames Godot plugin provides a CrazyGames autoload.
-	# If the plugin is installed, we use it directly.
-	# Otherwise, fall back to JavaScriptBridge calls.
-	# For now, we check if the plugin's global is reachable.
 	var js_check = JavaScriptBridge.eval("""
-		(typeof window !== 'undefined' && typeof window.CrazyGames !== 'undefined')
+		(typeof window !== 'undefined' && typeof window.CrazyGames !== 'undefined' && typeof window.CrazyGames.SDK !== 'undefined')
 	""", true)
 	_sdk_available = js_check == true
+	if _sdk_available:
+		JavaScriptBridge.eval("window.CrazyGames.SDK.init()")
 
 func is_available() -> bool:
 	return _sdk_available and OS.has_feature("web")
+
+# --- Loading ---
+
+func loading_stop() -> void:
+	if not is_available():
+		return
+	JavaScriptBridge.eval("window.CrazyGames.SDK.game.loadingStop()")
 
 # --- Gameplay events ---
 
