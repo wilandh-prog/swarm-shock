@@ -139,28 +139,37 @@ func _populate_upgrades() -> void:
 	for child in upgrade_list.get_children():
 		child.queue_free()
 
-	var stat_names := {
-		"max_health": "Health",
-		"lock_speed": "Missiles",
-		"move_speed": "Speed",
-	}
+	var upgrades := [
+		{"key": "max_health", "name": "Health", "desc": "+10% max HP per level", "color": Color(0.3, 1.0, 0.4)},
+		{"key": "missile_ammo", "name": "Missiles", "desc": "+2 starting missiles per level", "color": Color(1.0, 0.7, 0.15)},
+		{"key": "flare_count", "name": "Flares", "desc": "+10 starting flares per level", "color": Color(0.3, 0.7, 1.0)},
+	]
 
-	for stat_key in stat_names:
+	for upgrade in upgrades:
 		var hbox := HBoxContainer.new()
 		hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 		var name_label := Label.new()
-		name_label.text = "%s (Lv.%d)" % [stat_names[stat_key], GameManager.upgrade_levels[stat_key]]
+		var lvl: int = GameManager.upgrade_levels.get(upgrade["key"], 0)
+		name_label.text = "%s (Lv.%d)" % [upgrade["name"], lvl]
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
+		name_label.add_theme_color_override("font_color", upgrade["color"])
+		name_label.add_theme_font_size_override("font_size", 16)
 		hbox.add_child(name_label)
 
-		var cost := GameManager.get_upgrade_cost(stat_key)
+		var desc_label := Label.new()
+		desc_label.text = upgrade["desc"]
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		desc_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.7))
+		desc_label.add_theme_font_size_override("font_size", 12)
+		hbox.add_child(desc_label)
+
+		var cost := GameManager.get_upgrade_cost(upgrade["key"])
 		var buy_button := Button.new()
 		buy_button.text = "%d XP" % cost
 		buy_button.disabled = GameManager.xp_total < cost
-		_style_button(buy_button, Color(1.0, 0.9, 0.2), Color(0.1, 0.08, 0.02, 0.9))
-		buy_button.pressed.connect(_on_buy_upgrade.bind(stat_key))
+		_style_button(buy_button, upgrade["color"], Color(0.1, 0.08, 0.02, 0.9))
+		buy_button.pressed.connect(_on_buy_upgrade.bind(upgrade["key"]))
 		hbox.add_child(buy_button)
 
 		upgrade_list.add_child(hbox)

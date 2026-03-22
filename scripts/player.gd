@@ -48,7 +48,13 @@ const MAX_BANK_ANGLE: float = 0.5 # radians (~28 degrees)
 const MAX_PITCH_ANGLE: float = 0.4 # radians (~23 degrees)
 const BANK_LERP_SPEED: float = 6.0
 
+# Missile ammo
+var missile_ammo: int = 4
+var missile_ammo_max: int = 4
+
 # Flares
+var flare_count: int = 30
+var flare_count_max: int = 30
 var _flare_cooldown: float = 0.0
 const FLARE_COOLDOWN: float = 0.3
 var _flare_key_was_pressed: bool = false
@@ -111,6 +117,10 @@ func _apply_base_stats() -> void:
 	pickup_range = GameManager.get_stat("pickup_range")
 	damage_mult = GameManager.get_stat("damage_mult")
 	chain_range = GameManager.get_stat("chain_range")
+	missile_ammo_max = 4 + GameManager.upgrade_levels.get("missile_ammo", 0) * 2
+	missile_ammo = missile_ammo_max
+	flare_count_max = 30 + GameManager.upgrade_levels.get("flare_count", 0) * 10
+	flare_count = flare_count_max
 
 func _apply_weapon_upgrades() -> void:
 	if weapon_manager:
@@ -378,11 +388,12 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
-	# Flare deployment (Alt key)
+	# Flare deployment (F key)
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
 	var f_pressed: bool = Input.is_key_pressed(KEY_F)
-	if f_pressed and not _flare_key_was_pressed and _flare_cooldown <= 0.0:
+	if f_pressed and not _flare_key_was_pressed and _flare_cooldown <= 0.0 and flare_count > 0:
 		_deploy_flare()
+		flare_count -= 1
 		_flare_cooldown = FLARE_COOLDOWN
 		if _flare_sound_player:
 			_flare_sound_player.play()

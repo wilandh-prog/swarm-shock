@@ -78,6 +78,7 @@ const ATTRACT_CHECK_INTERVAL: float = 0.15
 var enemy_scene: PackedScene
 var xp_gem_scene: PackedScene
 var volt_pickup_scene: PackedScene
+var ammo_pickup_scene: PackedScene
 var player_scene: PackedScene
 
 # Camera chase
@@ -132,6 +133,7 @@ func _ready() -> void:
 	enemy_scene = load("res://scenes/entities/enemy.tscn")
 	xp_gem_scene = load("res://scenes/entities/xp_gem.tscn")
 	volt_pickup_scene = load("res://scenes/entities/volt_pickup.tscn")
+	ammo_pickup_scene = load("res://scenes/entities/ammo_pickup.tscn")
 	player_scene = load("res://scenes/entities/player.tscn")
 
 	# Spawn player
@@ -199,7 +201,6 @@ func _ready() -> void:
 
 	# Start run
 	GameManager.start_run()
-	GameManager.player_leveled_up.connect(_on_player_leveled_up)
 
 func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
@@ -302,6 +303,9 @@ func _process(delta: float) -> void:
 				_waiting_for_next_wave = true
 				_wave_delay_timer = 0.0
 				awacs_message("PICTURE CLEAN. STANDBY FOR TASKING.", 3.0)
+				# Level up every 2 waves cleared
+				if _current_wave > 0 and _current_wave % 2 == 1:
+					_on_player_leveled_up(_current_wave / 2 + 1)
 
 		# Landing trigger: mission mode only, all waves done and all enemies dead
 		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0:
@@ -639,6 +643,15 @@ func _on_enemy_died(pos: Vector3, xp_value: int) -> void:
 	if _splash_sound:
 		_splash_sound.play()
 	_try_chain_lightning(pos)
+	if randf() < 0.25:
+		_spawn_ammo_pickup(pos)
+
+func _spawn_ammo_pickup(pos: Vector3) -> void:
+	if not ammo_pickup_scene:
+		return
+	var ammo: Area3D = ammo_pickup_scene.instantiate()
+	pickup_container.call_deferred("add_child", ammo)
+	ammo.set_deferred("global_position", pos)
 
 func _spawn_xp_gem(pos: Vector3, value: int) -> void:
 	if not xp_gem_scene:
@@ -1016,7 +1029,6 @@ func _spawn_convoy() -> void:
 # --- Player events ---
 
 func _on_player_leveled_up(level: int) -> void:
-	get_tree().paused = true
 	if is_instance_valid(player):
 		var burst := Particles.level_up_burst(player.global_position)
 		add_child(burst)

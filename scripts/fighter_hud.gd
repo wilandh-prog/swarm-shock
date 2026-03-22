@@ -78,6 +78,7 @@ func _draw() -> void:
 	_draw_lock_reticle(ss)
 	_draw_missile_warning(ss)
 	_draw_g_meter(ss)
+	_draw_missile_status(ss)
 	_draw_flare_status(ss)
 	_draw_radar(ss)
 	_draw_speed_lines(ss)
@@ -484,6 +485,19 @@ func _draw_g_meter(ss: Vector2) -> void:
 		g_color = Color(1.0, 0.3, 0.2, 0.9)
 	draw_string(font, Vector2(x + 15, y), "%.1f" % _smooth_g, HORIZONTAL_ALIGNMENT_LEFT, 40, 15, g_color)
 
+# --- Missile ammo status ---
+
+func _draw_missile_status(ss: Vector2) -> void:
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var x: float = 75.0
+	var y: float = ss.y * 0.5 + 185.0
+	var ammo: int = player.missile_ammo
+	var max_ammo: int = player.missile_ammo_max
+	var color: Color = HUD_GREEN if ammo > 0 else Color(1.0, 0.3, 0.2, 0.9)
+	draw_string(font, Vector2(x, y), "MSL %d/%d" % [ammo, max_ammo], HORIZONTAL_ALIGNMENT_LEFT, 100, 11, color)
+
 # --- Flare status ---
 
 func _draw_flare_status(ss: Vector2) -> void:
@@ -491,11 +505,14 @@ func _draw_flare_status(ss: Vector2) -> void:
 	if not font:
 		return
 	var x: float = 75.0
-	var y: float = ss.y * 0.5 + 185.0
-	if player._flare_cooldown <= 0.0:
-		draw_string(font, Vector2(x, y), "FLARE RDY", HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN)
+	var y: float = ss.y * 0.5 + 200.0
+	var count: int = player.flare_count
+	if count <= 0:
+		draw_string(font, Vector2(x, y), "FLARE 0", HORIZONTAL_ALIGNMENT_LEFT, 80, 11, Color(1.0, 0.3, 0.2, 0.9))
+	elif player._flare_cooldown <= 0.0:
+		draw_string(font, Vector2(x, y), "FLARE %d" % count, HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN)
 	else:
-		draw_string(font, Vector2(x, y), "FLARE %.1f" % player._flare_cooldown, HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN_DIM)
+		draw_string(font, Vector2(x, y), "FLARE %d" % count, HORIZONTAL_ALIGNMENT_LEFT, 80, 11, HUD_GREEN_DIM)
 
 # --- Radar (bottom-left) ---
 
@@ -757,7 +774,7 @@ func _draw_agm_status(ss: Vector2) -> void:
 		return
 	var wm = player.weapon_manager
 	var x: float = 75.0
-	var y: float = ss.y * 0.5 + 205.0
+	var y: float = ss.y * 0.5 + 220.0
 
 	var has_ship_lock: bool = wm.ship_locked_target != null and is_instance_valid(wm.ship_locked_target)
 	var has_ship_tracking: bool = wm.ship_tracking_target != null and is_instance_valid(wm.ship_tracking_target)

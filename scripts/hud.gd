@@ -160,38 +160,127 @@ func _on_health_changed(current: float, maximum: float) -> void:
 
 # --- Upgrade selection ---
 
+var _pending_upgrades: int = 0
+
 func _build_upgrade_pool() -> void:
 	_upgrade_pool = [
+		# Missile branch (amber)
 		{
-			"id": "health_up", "name": "REPAIR +25 HP",
-			"description": "Increase maximum health and heal",
+			"id": "missile_capacity", "name": "EXPANDED MAGAZINE",
+			"description": "Max missiles +2",
+			"branch": "missile",
 			"apply": func():
 				if _player:
-					_player.max_health += 25.0
-					_player.heal(25.0),
-			"repeatable": true,
+					_player.missile_ammo_max += 2
+					_player.missile_ammo = mini(_player.missile_ammo + 2, _player.missile_ammo_max),
+		},
+		# Lock-on branch (cyan)
+		{
+			"id": "lock_speed", "name": "FAST LOCK",
+			"description": "Lock-on speed +30%",
+			"branch": "lockon",
+			"apply": func():
+				if _player and _player.weapon_manager:
+					_player.weapon_manager.lock_speed *= 1.3
+					_player.weapon_manager.agm_lock_speed *= 1.3,
+		},
+		{
+			"id": "lock_cone", "name": "WIDE SEEKER",
+			"description": "Lock cone wider",
+			"branch": "lockon",
+			"apply": func():
+				if _player and _player.weapon_manager:
+					_player.weapon_manager.lock_cone = maxf(_player.weapon_manager.lock_cone - 0.1, 0.2),
+		},
+		# Defensive branch (green)
+		{
+			"id": "repair", "name": "REPAIR +30 HP",
+			"description": "Heal 30 HP, +15 max HP",
+			"branch": "defensive",
+			"apply": func():
+				if _player:
+					_player.max_health += 15.0
+					_player.heal(30.0),
+		},
+		{
+			"id": "extra_flares", "name": "EXTRA FLARES +30",
+			"description": "Get 30 more flares",
+			"branch": "defensive",
+			"apply": func():
+				if _player:
+					_player.flare_count_max += 30
+					_player.flare_count = mini(_player.flare_count + 30, _player.flare_count_max),
+		},
+		{
+			"id": "speed_boost", "name": "AFTERBURNER TUNE",
+			"description": "Move speed +10%",
+			"branch": "defensive",
+			"apply": func():
+				if _player:
+					_player.move_speed *= 1.1,
 		},
 	]
 
 func show_upgrade_selection() -> void:
-	# Only one upgrade (health) — apply automatically, no panel needed
-	if _upgrade_pool.size() > 0:
-		_upgrade_pool[0]["apply"].call()
+	_pending_upgrades += 1
+	if _pending_upgrades > 1:
+		return  # already showing picker, will re-show after current pick
+	_show_upgrade_cards()
 
-	# Reset XP bar display for smooth animation
+func _show_upgrade_cards() -> void:
+	# Show all upgrades
+	var choices: Array[Dictionary] = _upgrade_pool
+
+	# Clear old buttons
+	for child in upgrade_buttons.get_children():
+		child.queue_free()
+
+	# Create card buttons
+	for upgrade in choices:
+		var btn := Button.new()
+		btn.text = "%s\n%s" % [upgrade["name"], upgrade["description"]]
+		btn.custom_minimum_size.y = 60
+		btn.add_theme_font_size_override("font_size", 16)
+
+		var border_color: Color = _branch_color(upgrade["branch"])
+		btn.add_theme_color_override("font_color", border_color.lightened(0.3))
+		btn.add_theme_stylebox_override("normal", _create_button_style(border_color, Color(0.03, 0.03, 0.08, 0.9)))
+		btn.add_theme_stylebox_override("hover", _create_button_style(border_color.lightened(0.3), Color(0.06, 0.06, 0.12, 0.95)))
+		btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.08, 0.08, 0.15, 1.0)))
+
+		btn.pressed.connect(func():
+			upgrade["apply"].call()
+			_on_upgrade_picked()
+		)
+		upgrade_buttons.add_child(btn)
+
+	upgrade_panel.visible = true
+
+	# Animate in
+	upgrade_panel.modulate.a = 0.0
+	upgrade_panel.scale = Vector2(0.8, 0.8)
+	upgrade_panel.pivot_offset = upgrade_panel.size / 2.0
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(upgrade_panel, "modulate:a", 1.0, 0.2)
+	tween.parallel().tween_property(upgrade_panel, "scale", Vector2.ONE, 0.35)
+
+func _on_upgrade_picked() -> void:
+	_pending_upgrades -= 1
 	_display_xp = 0.0
-	get_tree().paused = false
+	if _pending_upgrades > 0:
+		_show_upgrade_cards()
+	else:
+		upgrade_panel.visible = false
+
+func _branch_color(branch: String) -> Color:
+	match branch:
+		"missile": return Color(1.0, 0.7, 0.15)
+		"lockon": return Color(0.3, 0.7, 1.0)
+		"defensive": return Color(0.3, 1.0, 0.4)
+	return Color(0.7, 0.7, 0.7)
 
 func is_upgrade_open() -> bool:
 	return upgrade_panel.visible
-
-var _taken_upgrades: Array[String] = []
-
-func _is_upgrade_taken(id: String) -> bool:
-	return id in _taken_upgrades
-
-func _mark_upgrade_taken(id: String) -> void:
-	_taken_upgrades.append(id)
 
 # --- AWACS radio ---
 

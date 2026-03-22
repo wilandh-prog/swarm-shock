@@ -27,7 +27,7 @@ var locked_target: Node3D = null
 var tracking_target: Node3D = null
 var lock_progress: float = 0.0
 const LOCK_RANGE: float = 3000.0
-const LOCK_CONE: float = 0.6  # dot product threshold (~53 degrees)
+var lock_cone: float = 0.6  # dot product threshold (~53 degrees), upgradeable
 var lock_speed: float = 0.6  # ~1.7s at perfect centering, upgradeable
 const LOCK_DECAY: float = 1.0  # lose tracking in ~1s
 
@@ -121,9 +121,9 @@ func _update_lock_on(delta: float) -> void:
 		var to_tt: Vector3 = tracking_target.global_position - player.global_position
 		var tt_dist: float = to_tt.length()
 		var tt_dot: float = fwd.dot(to_tt / tt_dist) if tt_dist > 1.0 else -1.0
-		if tt_dist < LOCK_RANGE and tt_dot > LOCK_CONE:
+		if tt_dist < LOCK_RANGE and tt_dot > lock_cone:
 			# Still valid — advance progress
-			var center: float = clampf((tt_dot - LOCK_CONE) / (1.0 - LOCK_CONE), 0.0, 1.0)
+			var center: float = clampf((tt_dot - lock_cone) / (1.0 - lock_cone), 0.0, 1.0)
 			lock_progress = minf(lock_progress + lock_speed * center * delta, 1.0)
 			if lock_progress >= 1.0:
 				locked_target = tracking_target
@@ -136,7 +136,7 @@ func _update_lock_on(delta: float) -> void:
 
 	# No current tracking target — find best candidate in cone
 	var best_target: Node3D = null
-	var best_dot: float = LOCK_CONE
+	var best_dot: float = lock_cone
 
 	for enemy in GameManager.enemies_alive:
 		if not is_instance_valid(enemy):
@@ -227,6 +227,8 @@ func _fire_agm() -> void:
 	proj.global_position = player.global_position
 
 func _fire_missiles() -> void:
+	if player.missile_ammo <= 0:
+		return
 	if _missile_sound:
 		_missile_sound.play()
 	if _fox2_sound:
@@ -239,7 +241,7 @@ func _fire_missiles() -> void:
 	# Aim toward locked target if available
 	if locked_target and is_instance_valid(locked_target):
 		aim_dir = (locked_target.global_position - player.global_position).normalized()
-	var total: int = missile_count + player.projectile_count_bonus
+	var total: int = mini(missile_count + player.projectile_count_bonus, player.missile_ammo)
 	var base_dmg: float = missile_damage * player.damage_mult
 
 	var spd: float = maxf(missile_speed, player._current_speed + 500.0)
@@ -255,6 +257,7 @@ func _fire_missiles() -> void:
 			proj.homing_turn_rate = missile_turn_rate
 		container.add_child(proj)
 		proj.global_position = player.global_position
+	player.missile_ammo -= total
 
 func _fire_gun() -> void:
 	if _gun_sound and not _gun_sound.playing:
