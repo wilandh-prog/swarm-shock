@@ -34,6 +34,7 @@ var _tutorial_alpha: float = 0.0
 # Wave announcement (big centered text, fades out)
 var _wave_announce_text: String = ""
 var _wave_announce_timer: float = 0.0
+var _wave_announce_color: Color = Color.WHITE
 const WAVE_ANNOUNCE_DURATION: float = 3.0
 
 # Landing guidance
@@ -733,14 +734,15 @@ func _draw_wave_announcement(ss: Vector2) -> void:
 	var alpha: float = clampf(_wave_announce_timer / 0.5, 0.0, 1.0)  # fade out in last 0.5s
 	var cx: float = ss.x * 0.5
 	var cy: float = ss.y * 0.35
-	var col := Color(1.0, 1.0, 1.0, alpha)
+	var col := Color(_wave_announce_color, alpha)
 	var shadow := Color(0.0, 0.0, 0.0, alpha * 0.6)
 	var tw: float = font.get_string_size(_wave_announce_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 48).x
 	draw_string(font, Vector2(cx - tw * 0.5 + 3, cy + 3), _wave_announce_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 48, shadow)
 	draw_string(font, Vector2(cx - tw * 0.5, cy), _wave_announce_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 48, col)
 
-func show_wave_announcement(text: String) -> void:
+func show_wave_announcement(text: String, color: Color = Color.WHITE) -> void:
 	_wave_announce_text = text
+	_wave_announce_color = color
 	_wave_announce_timer = WAVE_ANNOUNCE_DURATION
 
 # --- Ship lock reticle (AGM targeting) ---

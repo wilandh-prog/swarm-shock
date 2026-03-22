@@ -893,18 +893,18 @@ func _update_landing(_delta: float) -> void:
 				_on_landing_failed()
 
 func _on_landing_failed() -> void:
-	_phase = GamePhase.LANDED  # stop further checks
-	player.set_physics_process(false)
+	# Wave off — reposition for another approach
+	EffectsManager.screen_flash(Color(1.0, 0.5, 0.1), 0.3)
+	awacs_message("WAVE OFF, WAVE OFF -- GO AROUND. RE-ENTER THE PATTERN.", 4.0)
+	if hud.fighter_hud:
+		hud.fighter_hud.show_wave_announcement("WAVE OFF -- GO AROUND", Color(1.0, 0.3, 0.2))
 
-	EffectsManager.screen_flash(Color(1.0, 0.1, 0.1), 0.4)
-	EffectsManager.screen_shake(10.0, 0.3)
-
-	hud.stop_landing_guidance()
-	hud.show_landing_failed()
-
-	await get_tree().create_timer(2.5).timeout
-	GameManager.end_run()
-	get_tree().change_scene_to_file("res://scenes/game_over.tscn")
+	# Push player back and up for another pass
+	var behind := Vector3(-sin(_carrier_heading), 0.0, cos(_carrier_heading))
+	player.global_position = _carrier.global_position + behind * 5000.0 + Vector3(0, 800, 0)
+	player._target_altitude = 800.0
+	player._heading = _carrier_heading
+	_landing_timer = 0.0
 
 func _on_landing_success() -> void:
 	_phase = GamePhase.LANDED

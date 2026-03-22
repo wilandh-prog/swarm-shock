@@ -210,18 +210,48 @@ func _setup_visuals() -> void:
 	if f14_model:
 		_setup_wing_sweep(jet_instance)
 
-	# Blob shadow on ground
+	# Triangle shadow on ground (flat triangle via ArrayMesh)
 	_shadow = MeshInstance3D.new()
-	var shadow_mesh := PlaneMesh.new()
-	shadow_mesh.size = Vector2(30.0, 30.0)
-	_shadow.mesh = shadow_mesh
+	var arr_mesh := ArrayMesh.new()
+	var verts := PackedVector3Array([
+		# Delta fuselage (long pointed nose to wide tail)
+		Vector3(0, 0, -140),    # nose tip
+		Vector3(-15, 0, 80),    # left fuselage rear
+		Vector3(15, 0, 80),     # right fuselage rear
+		# Left swept wing
+		Vector3(0, 0, -40),     # wing root leading edge
+		Vector3(-90, 0, 70),    # left wingtip
+		Vector3(-10, 0, 80),    # wing root trailing edge
+		# Right swept wing
+		Vector3(0, 0, -40),     # wing root leading edge
+		Vector3(10, 0, 80),     # wing root trailing edge
+		Vector3(90, 0, 70),     # right wingtip
+		# Left tail fin
+		Vector3(-8, 0, 50),
+		Vector3(-35, 0, 90),
+		Vector3(-5, 0, 90),
+		# Right tail fin
+		Vector3(8, 0, 50),
+		Vector3(5, 0, 90),
+		Vector3(35, 0, 90),
+	])
+	var normals := PackedVector3Array()
+	for i in verts.size():
+		normals.append(Vector3.UP)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var shadow_mat := StandardMaterial3D.new()
 	shadow_mat.albedo_color = Color(0, 0, 0, 0.4)
 	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	shadow_mat.no_depth_test = true
-	_shadow.material_override = shadow_mat
-	_shadow.position.y = 1.0 # just above ground
+	shadow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	arr_mesh.surface_set_material(0, shadow_mat)
+	_shadow.mesh = arr_mesh
+	_shadow.position.y = 1.0
 	add_child(_shadow)
 
 	# Glow light
@@ -389,8 +419,8 @@ func _physics_process(delta: float) -> void:
 	velocity.y = (_target_altitude - global_position.y) * 10.0
 	move_and_slide()
 
-	# Ground collision — instant death
-	if global_position.y < -10.0 and not landing_mode:
+	# Ground/water collision — instant death
+	if global_position.y < -10.0:
 		take_damage(max_health * 10.0)
 
 	# Missile regen — only when at 0, one every 10s
@@ -442,15 +472,16 @@ func _update_visuals(delta: float) -> void:
 		_plane_body.rotation.z = _bank_angle
 		_plane_body.rotation.x = _pitch_angle
 
-	# Shadow: stays on ground, grows and fades with altitude
+	# Shadow: stays on ground, scales with altitude, follows heading
 	if _shadow:
-		_shadow.position.y = -global_position.y + 1.0 # keep on ground
+		_shadow.position.y = -global_position.y + 1.0
+		_shadow.rotation.y = -_heading
 		var alt_ratio: float = clampf(global_position.y / MAX_ALTITUDE, 0.0, 1.0)
-		var shadow_scale: float = 1.0 + alt_ratio * 2.0 # bigger when higher
+		var shadow_scale: float = 1.0 + alt_ratio * 5.0
 		_shadow.scale = Vector3(shadow_scale, 1.0, shadow_scale)
-		var shadow_mat := _shadow.material_override as StandardMaterial3D
-		if shadow_mat:
-			shadow_mat.albedo_color.a = 0.4 * (1.0 - alt_ratio * 0.7) # fades when higher
+		var sm: StandardMaterial3D = _shadow.material_override as StandardMaterial3D
+		if sm:
+			sm.albedo_color.a = 0.5 * (1.0 - alt_ratio * 0.8)
 
 	# Pulse glow
 	var pulse: float = (sin(_pulse_time * 3.0) + 1.0) * 0.5
