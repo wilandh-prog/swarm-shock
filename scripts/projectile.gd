@@ -8,6 +8,7 @@ var explosion_radius: float = 50.0
 var lifetime: float = 8.0
 var _timer: float = 0.0
 var _mesh_root: Node3D
+var _trail: CPUParticles3D
 
 # Homing
 var homing_target: Node3D = null
@@ -164,37 +165,33 @@ func _build_mesh() -> void:
 	flame.position.y = -25.0
 	_mesh_root.add_child(flame)
 
-	# Smoke trail
-	var trail := CPUParticles3D.new()
-	trail.amount = 30
-	trail.lifetime = 1.2
-	trail.explosiveness = 0.0
-	trail.randomness = 0.2
-	trail.direction = Vector3(0, -1, 0)
-	trail.spread = 8.0
-	trail.initial_velocity_min = 5.0
-	trail.initial_velocity_max = 15.0
-	trail.gravity = Vector3(0, 10, 0)
-	trail.damping_min = 2.0
-	trail.damping_max = 5.0
-	trail.scale_amount_min = 3.0
-	trail.scale_amount_max = 8.0
-	trail.scale_amount_curve = Particles._create_grow_fade_curve()
+	# Smoke stream — thick persistent trail behind missile
+	# emitting=false here; enabled from _process once in-tree (global transform needed)
+	_trail = CPUParticles3D.new()
+	_trail.emitting = false
+	_trail.amount = 60
+	_trail.lifetime = 3.0
+	_trail.explosiveness = 0.0
+	_trail.randomness = 0.3
+	_trail.local_coords = false
+	_trail.direction = Vector3.ZERO
+	_trail.spread = 0.0
+	_trail.initial_velocity_min = 0.0
+	_trail.initial_velocity_max = 0.0
+	_trail.gravity = Vector3(0, 12, 0)
+	_trail.scale_amount_min = 12.0
+	_trail.scale_amount_max = 25.0
+	_trail.scale_amount_curve = Particles._create_grow_fade_curve()
 	var trail_grad := Gradient.new()
-	trail_grad.set_color(0, Color(0.9, 0.9, 0.9, 0.6))
-	trail_grad.add_point(0.3, Color(0.7, 0.7, 0.7, 0.4))
-	trail_grad.add_point(0.7, Color(0.5, 0.5, 0.5, 0.15))
+	trail_grad.set_color(0, Color(1.0, 1.0, 1.0, 0.8))
+	trail_grad.add_point(0.2, Color(0.9, 0.9, 0.9, 0.5))
+	trail_grad.add_point(0.5, Color(0.7, 0.7, 0.7, 0.25))
+	trail_grad.add_point(0.8, Color(0.5, 0.5, 0.5, 0.08))
 	trail_grad.set_color(1, Color(0.4, 0.4, 0.4, 0.0))
-	trail.color_ramp = trail_grad
-	var trail_sphere := SphereMesh.new()
-	trail_sphere.radius = 1.0
-	trail_sphere.height = 2.0
-	trail_sphere.radial_segments = 4
-	trail_sphere.rings = 2
-	trail_sphere.material = _get_trail_mat()
-	trail.mesh = trail_sphere
-	trail.position.y = -25.0  # emit from exhaust
-	_mesh_root.add_child(trail)
+	_trail.color_ramp = trail_grad
+	_trail.mesh = Particles._get_smoke_mesh()
+	_trail.position.y = -25.0
+	_mesh_root.add_child(_trail)
 
 	_update_mesh_orientation()
 	add_child(_mesh_root)
@@ -235,6 +232,10 @@ func _update_mesh_orientation() -> void:
 	_mesh_root.basis = Basis(right, fwd, Vector3.UP)
 
 func _process(delta: float) -> void:
+	# Start smoke trail on first frame (node is guaranteed in-tree here)
+	if _trail and not _trail.emitting:
+		_trail.emitting = true
+
 	# Homing: steer toward predicted intercept point
 	if homing_target and is_instance_valid(homing_target):
 		var to_target := homing_target.global_position - global_position
