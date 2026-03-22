@@ -20,7 +20,7 @@ var _awacs_alpha: float = 0.0
 var _awacs_reveal: float = 0.0  # character reveal progress (typewriter)
 var _awacs_prev_text: String = ""  # track text changes to reset reveal
 var _awacs_glitch_time: float = 0.0  # rolling timer for glitch flicker
-const AWACS_CHARS_PER_SEC: float = 30.0  # typewriter speed
+const AWACS_CHARS_PER_SEC: float = 34.0  # typewriter speed
 const AWACS_GLITCH_CHARS: String = "#%&@!$^*~=+"
 var wave_current: int = 0
 var wave_total: int = 0
@@ -646,9 +646,9 @@ func _draw_awacs_radio(ss: Vector2) -> void:
 	# Typewriter reveal with glitch chars at the frontier
 	var revealed: int = mini(int(_awacs_reveal), full_text.length())
 	var display: String = full_text.substr(0, revealed)
-	# Add 1-2 garbled characters at the reveal frontier
+	# Add 1 garbled character at the reveal frontier
 	if revealed < full_text.length():
-		var glitch_count := mini(2, full_text.length() - revealed)
+		var glitch_count := mini(1, full_text.length() - revealed)
 		for i in glitch_count:
 			var idx := int((_awacs_glitch_time * 37.0 + float(i) * 13.0)) % AWACS_GLITCH_CHARS.length()
 			display += AWACS_GLITCH_CHARS[idx]

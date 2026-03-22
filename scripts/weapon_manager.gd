@@ -20,6 +20,7 @@ var gun_speed: float = 5000.0
 var gun_fire_rate: float = 0.08
 var gun_spread: float = 1.5  # degrees
 var _gun_cooldown: float = 0.0
+var _gun_sound: AudioStreamPlayer
 
 # Lock-on (progressive)
 var locked_target: Node3D = null
@@ -62,6 +63,13 @@ func _ready() -> void:
 		_fox2_sound.volume_db = -2.0
 		_fox2_sound.bus = &"Master"
 		add_child(_fox2_sound)
+	var gun_stream: AudioStream = load("res://assets/audio/gun.mp3")
+	if gun_stream:
+		_gun_sound = AudioStreamPlayer.new()
+		_gun_sound.stream = gun_stream
+		_gun_sound.volume_db = 0.0
+		_gun_sound.bus = &"Master"
+		add_child(_gun_sound)
 
 func _process(delta: float) -> void:
 	if not player:
@@ -82,6 +90,8 @@ func _process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_G) and _gun_cooldown <= 0.0:
 		_gun_cooldown = gun_fire_rate
 		_fire_gun()
+	elif not Input.is_key_pressed(KEY_G) and _gun_sound and _gun_sound.playing:
+		_gun_sound.stop()
 
 	# AGM (E key) — requires ship lock
 	if _agm_cooldown > 0.0:
@@ -247,6 +257,8 @@ func _fire_missiles() -> void:
 		proj.global_position = player.global_position
 
 func _fire_gun() -> void:
+	if _gun_sound and not _gun_sound.playing:
+		_gun_sound.play()
 	var container: Node = _get_projectile_container()
 	if not container:
 		return

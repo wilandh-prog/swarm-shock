@@ -31,10 +31,13 @@ var selected_character: String = "spark"
 var enemies_alive: Array[Area3D] = []
 var enemy_missiles: Array[Area3D] = []
 var flares_active: Array[Area3D] = []
+var _radar_blip_sound: AudioStreamPlayer
 
 func register_enemy(e: Area3D) -> void:
 	enemies_alive.append(e)
 	e.tree_exiting.connect(func(): enemies_alive.erase(e))
+	if _radar_blip_sound:
+		_radar_blip_sound.play()
 
 func register_enemy_missile(m: Area3D) -> void:
 	enemy_missiles.append(m)
@@ -67,6 +70,13 @@ const UPGRADE_COST_SCALE: float = 1.5
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	var blip_stream: AudioStream = load("res://assets/audio/new radar object.mp3")
+	if blip_stream:
+		_radar_blip_sound = AudioStreamPlayer.new()
+		_radar_blip_sound.stream = blip_stream
+		_radar_blip_sound.volume_db = 0.0
+		_radar_blip_sound.bus = &"Master"
+		add_child(_radar_blip_sound)
 
 func _process(delta: float) -> void:
 	if run_active:

@@ -384,11 +384,8 @@ func _speak_awacs(text: String) -> void:
 	clean = clean.strip_edges()
 	if clean.is_empty():
 		return
-	# Add periods between words for choppy, clipped radio cadence
-	var words := clean.split(" ", false)
-	clean = ". ".join(words) + "."
-	# Scale rate up for longer messages so they don't drag
-	var rate := 1.6 + clampf(float(words.size() - 3) * 0.12, 0.0, 1.0)
+	# Slight pauses at punctuation give radio cadence without choppiness
+	var rate := 1.3 + clampf(float(clean.split(" ", false).size() - 3) * 0.1, 0.0, 0.7)
 	# pitch 1.5 = tinny radio, volume 70
 	DisplayServer.tts_speak(clean, "", 70, 1.5, rate)
 
