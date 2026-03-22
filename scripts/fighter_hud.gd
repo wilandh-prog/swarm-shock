@@ -31,6 +31,11 @@ var mission_label: String = ""
 var tutorial_lines: PackedStringArray = []
 var _tutorial_alpha: float = 0.0
 
+# Wave announcement (big centered text, fades out)
+var _wave_announce_text: String = ""
+var _wave_announce_timer: float = 0.0
+const WAVE_ANNOUNCE_DURATION: float = 3.0
+
 # Landing guidance
 var landing_active: bool = false
 var landing_carrier: Node3D = null
@@ -57,6 +62,9 @@ func _process(delta: float) -> void:
 			_awacs_prev_text = awacs_text
 		_awacs_reveal += AWACS_CHARS_PER_SEC * delta
 	_awacs_glitch_time += delta
+	# Wave announcement fade
+	if _wave_announce_timer > 0.0:
+		_wave_announce_timer -= delta
 	# Tutorial fade
 	if tutorial_lines.size() > 0:
 		_tutorial_alpha = move_toward(_tutorial_alpha, 1.0, 3.0 * delta)
@@ -86,6 +94,7 @@ func _draw() -> void:
 	_draw_agm_status(ss)
 	_draw_awacs_radio(ss)
 	_draw_wave_indicator(ss)
+	_draw_wave_announcement(ss)
 	_draw_tutorial_text(ss)
 	if landing_active:
 		_draw_landing_guidance(ss)
@@ -712,6 +721,27 @@ func _draw_wave_indicator(ss: Vector2) -> void:
 	else:
 		text = "WAVE %d/%d" % [wave_current, wave_total]
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, HUD_GREEN_DIM)
+
+# --- Wave announcement (big centered text) ---
+
+func _draw_wave_announcement(ss: Vector2) -> void:
+	if _wave_announce_timer <= 0.0:
+		return
+	var font := ThemeDB.fallback_font
+	if not font:
+		return
+	var alpha: float = clampf(_wave_announce_timer / 0.5, 0.0, 1.0)  # fade out in last 0.5s
+	var cx: float = ss.x * 0.5
+	var cy: float = ss.y * 0.35
+	var col := Color(1.0, 1.0, 1.0, alpha)
+	var shadow := Color(0.0, 0.0, 0.0, alpha * 0.6)
+	var tw: float = font.get_string_size(_wave_announce_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 48).x
+	draw_string(font, Vector2(cx - tw * 0.5 + 3, cy + 3), _wave_announce_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 48, shadow)
+	draw_string(font, Vector2(cx - tw * 0.5, cy), _wave_announce_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 48, col)
+
+func show_wave_announcement(text: String) -> void:
+	_wave_announce_text = text
+	_wave_announce_timer = WAVE_ANNOUNCE_DURATION
 
 # --- Ship lock reticle (AGM targeting) ---
 

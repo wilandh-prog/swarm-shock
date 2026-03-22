@@ -36,7 +36,7 @@ const MIN_SPEED_MULT: float = 0.5
 const MAX_SPEED_MULT: float = 2.0
 const TURN_SPEED_BLEED: float = 1500.0 # speed lost per second at full turn
 const ALTITUDE_SPEED: float = 800.0
-const MIN_ALTITUDE: float = 0.0
+const MIN_ALTITUDE: float = -50.0
 const MAX_ALTITUDE: float = 4000.0
 var _target_altitude: float = 2000.0
 var landing_mode: bool = false
@@ -51,6 +51,8 @@ const BANK_LERP_SPEED: float = 6.0
 # Missile ammo
 var missile_ammo: int = 4
 var missile_ammo_max: int = 4
+var _missile_regen_timer: float = 0.0
+const MISSILE_REGEN_INTERVAL: float = 10.0
 
 # Flares
 var flare_count: int = 30
@@ -90,7 +92,7 @@ var _incoming_sound_playing: bool = false
 var _flare_sound_player: AudioStreamPlayer
 var _altitude_sound_player: AudioStreamPlayer
 var _altitude_warning_active: bool = false
-const ALTITUDE_WARNING_THRESHOLD: float = 50.0
+const ALTITUDE_WARNING_THRESHOLD: float = 100.0
 
 # Child nodes
 var pickup_area: Area3D
@@ -387,6 +389,18 @@ func _physics_process(delta: float) -> void:
 	velocity.y = (_target_altitude - global_position.y) * 10.0
 	move_and_slide()
 
+	# Ground collision — instant death
+	if global_position.y < -10.0 and not landing_mode:
+		take_damage(max_health * 10.0)
+
+	# Missile regen — only when at 0, one every 10s
+	if missile_ammo <= 0:
+		_missile_regen_timer += delta
+		if _missile_regen_timer >= MISSILE_REGEN_INTERVAL:
+			_missile_regen_timer -= MISSILE_REGEN_INTERVAL
+			missile_ammo = mini(missile_ammo + 1, missile_ammo_max)
+	else:
+		_missile_regen_timer = 0.0
 
 	# Flare deployment (F key)
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)

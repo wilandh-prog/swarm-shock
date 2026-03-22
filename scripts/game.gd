@@ -14,7 +14,7 @@ var _current_wave: int = 0
 var _wave_spawned: bool = false
 const SPAWN_DISTANCE_MIN: float = 5000.0
 const SPAWN_DISTANCE_MAX: float = 8000.0
-const WAVE_DELAY: float = 3.0  # seconds between waves
+const WAVE_DELAY: float = 6.0  # seconds between waves
 
 func _get_wave_config() -> Array[Dictionary]:
 	if GameManager.game_mode == "wave":
@@ -202,6 +202,13 @@ func _ready() -> void:
 	# Start run
 	GameManager.start_run()
 
+	# Mission 1 briefing
+	if GameManager.game_mode == "mission":
+		hud.show_mission_briefing("MISSION 1: AIR SUPREMACY",
+			"Clear hostile aircraft from the AO.\nOnce skies are clear, land on the carrier\nto prepare for a strike on an enemy convoy.",
+			func():
+				get_tree().paused = false)
+
 func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -299,6 +306,8 @@ func _process(delta: float) -> void:
 					_wave_delay_timer = 0.0
 					_current_wave += 1
 					_wave_spawned = false
+					if GameManager.game_mode == "wave" and hud.fighter_hud:
+						hud.fighter_hud.show_wave_announcement("WAVE %d" % (_current_wave + 1))
 			elif enemy_container.get_child_count() == 0:
 				_waiting_for_next_wave = true
 				_wave_delay_timer = 0.0
@@ -796,6 +805,7 @@ func _begin_landing_sequence() -> void:
 	_scroll_blend = 1.0
 	_landing_offset_base = Vector2(player.global_position.x, player.global_position.z)
 	player.landing_mode = true
+	hud.set_tutorial_text(PackedStringArray())  # clear tutorial text
 
 	# Save original speed before boost (for mission 2 restore)
 	_original_move_speed = player.move_speed
@@ -976,9 +986,14 @@ func _catapult_launch() -> void:
 	player._target_altitude = 800.0
 	if hud.fighter_hud:
 		hud.fighter_hud.speed_display_divisor = MISSION_2_SPEED_MULT
-		print("[M2] speed_display_divisor set to ", MISSION_2_SPEED_MULT, " move_speed=", player.move_speed, " current=", player._current_speed)
-	else:
-		print("[M2] WARNING: hud.fighter_hud is null!")
+
+	# AGM tutorial — show briefly then clear
+	hud.set_tutorial_text(PackedStringArray([
+		"[E]  FIRE AGM AT SHIPS",
+		"[SPACE]  MISSILES    [G]  GUN",
+	]))
+	get_tree().create_timer(10.0).timeout.connect(func():
+		hud.set_tutorial_text(PackedStringArray()))
 
 	EffectsManager.screen_flash(Color(1.0, 0.9, 0.7), 0.3)
 	awacs_message("SHOOTER READY -- CAT 1 LAUNCH!", 2.0)
