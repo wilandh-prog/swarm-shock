@@ -11,6 +11,7 @@ extends Control
 @onready var close_upgrades_button: Button = $UpgradePanel/MarginContainer/VBoxContainer/CloseButton
 
 var _title_pulse: float = 0.0
+var _model_pivot: Node3D
 
 func _ready() -> void:
 	wave_button.pressed.connect(_on_wave_pressed)
@@ -21,6 +22,7 @@ func _ready() -> void:
 
 	upgrade_panel.visible = false
 	_update_xp_display(GameManager.xp_total)
+	_setup_3d_background()
 	_apply_neon_theme()
 	_create_best_scores()
 	_animate_in()
@@ -33,6 +35,76 @@ func _process(delta: float) -> void:
 		var pulse: float = (sin(_title_pulse) + 1.0) * 0.5
 		var col: Color = Color(0.3, 0.7, 1.0).lerp(Color(0.5, 0.3, 1.0), pulse)
 		title_label.add_theme_color_override("font_color", col)
+
+	# Rotate model
+	if _model_pivot:
+		_model_pivot.rotation.y += delta * 0.4
+
+func _setup_3d_background() -> void:
+	var jet_scene: PackedScene = load("res://assets/f-14/f14d.glb")
+	if not jet_scene:
+		jet_scene = load("res://assets/Jet.glb")
+	if not jet_scene:
+		return
+
+	# SubViewport for 3D rendering
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1920, 1080)
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+	# Camera
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+	camera.fov = 40.0
+	camera.position = Vector3(0, 2, 8)
+	camera.look_at(Vector3(0, 0, 0))
+	viewport.add_child(camera)
+
+	# Environment
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0, 0, 0, 0)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.4, 0.5, 0.7)
+	env.ambient_light_energy = 0.5
+	camera.environment = env
+
+	# Lights
+	var key_light := DirectionalLight3D.new()
+	key_light.rotation_degrees = Vector3(-40, 30, 0)
+	key_light.light_energy = 1.2
+	key_light.light_color = Color(0.8, 0.85, 1.0)
+	viewport.add_child(key_light)
+
+	var rim_light := DirectionalLight3D.new()
+	rim_light.rotation_degrees = Vector3(-20, -150, 0)
+	rim_light.light_energy = 0.6
+	rim_light.light_color = Color(0.3, 0.5, 1.0)
+	viewport.add_child(rim_light)
+
+	# Model pivot (for rotation)
+	_model_pivot = Node3D.new()
+	viewport.add_child(_model_pivot)
+
+	var jet := jet_scene.instantiate()
+	jet.scale = Vector3(0.6, 0.6, 0.6)
+	jet.rotation.x = deg_to_rad(-90.0)
+	_model_pivot.add_child(jet)
+	_model_pivot.rotation.y = deg_to_rad(-30.0)
+	_model_pivot.rotation.x = deg_to_rad(10.0)
+
+	# Container to display the viewport
+	var container := SubViewportContainer.new()
+	container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	container.stretch = true
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.add_child(viewport)
+
+	# Insert behind UI but in front of background
+	move_child($Background, 0)
+	add_child(container)
+	move_child(container, 1)
 
 func _apply_neon_theme() -> void:
 	var accent := Color(0.3, 0.7, 1.0)
@@ -192,12 +264,11 @@ func _create_best_scores() -> void:
 		return  # No games played yet
 
 	var vbox := VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	vbox.offset_top = -220.0
-	vbox.offset_bottom = -110.0
+	vbox.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	vbox.offset_top = 20.0
+	vbox.offset_bottom = 140.0
 	vbox.offset_left = -120.0
 	vbox.offset_right = 120.0
-	vbox.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	vbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	vbox.add_theme_constant_override("separation", 2)
 	add_child(vbox)
