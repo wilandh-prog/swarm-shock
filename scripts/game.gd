@@ -305,6 +305,7 @@ func _process(delta: float) -> void:
 					_waiting_for_next_wave = false
 					_wave_delay_timer = 0.0
 					_current_wave += 1
+					GameManager.run_wave = _current_wave
 					_wave_spawned = false
 					if GameManager.game_mode == "wave" and hud.fighter_hud:
 						hud.fighter_hud.show_wave_announcement("WAVE %d" % (_current_wave + 1))
@@ -415,6 +416,7 @@ func _update_tutorial(delta: float) -> void:
 					"[A] / [D]  TURN",
 					"[W] / [S]  SPEED",
 					"[UP] / [DOWN]  ALTITUDE",
+					"[C]  ALL CONTROLS",
 				]))
 				_tutorial_shown_flight = true
 			if _tutorial_timer >= 4.0:
@@ -496,6 +498,7 @@ func _update_tutorial_text() -> void:
 		hud.set_tutorial_text(PackedStringArray([
 			"HOLD [G] TO FIRE GUN",
 			"AIM WITH THE PIPPER",
+			"BEST VS INCOMING ENEMIES",
 		]))
 		_tutorial_shown_gun = true
 		return

@@ -290,7 +290,7 @@ func is_escape_open() -> bool:
 	return _escape_panel != null
 
 func show_escape_menu() -> void:
-	if _escape_panel:
+	if _escape_panel or is_controls_open():
 		return
 	get_tree().paused = true
 
@@ -395,6 +395,123 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause") and is_escape_open():
 		hide_escape_menu()
 		get_viewport().set_input_as_handled()
+	if event is InputEventKey and event.pressed and event.keycode == KEY_C:
+		if is_controls_open():
+			hide_controls()
+		else:
+			show_controls()
+		get_viewport().set_input_as_handled()
+
+# --- Controls overlay ---
+
+var _controls_panel: PanelContainer = null
+
+func is_controls_open() -> bool:
+	return _controls_panel != null
+
+func show_controls() -> void:
+	if _controls_panel or is_escape_open() or is_upgrade_open():
+		return
+	get_tree().paused = true
+
+	_controls_panel = PanelContainer.new()
+	_controls_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_controls_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_controls_panel.custom_minimum_size = Vector2(420, 400)
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.03, 0.08, 0.95)
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(0.3, 0.7, 1.0, 0.7)
+	panel_style.corner_radius_top_left = 12
+	panel_style.corner_radius_top_right = 12
+	panel_style.corner_radius_bottom_left = 12
+	panel_style.corner_radius_bottom_right = 12
+	panel_style.shadow_color = Color(0.2, 0.5, 1.0, 0.2)
+	panel_style.shadow_size = 10
+	_controls_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	_controls_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "CONTROLS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(0.3, 0.7, 1.0))
+	vbox.add_child(title)
+
+	var sep := HSeparator.new()
+	sep.add_theme_stylebox_override("separator", StyleBoxLine.new())
+	vbox.add_child(sep)
+
+	var controls := [
+		["A / D", "Turn left / right"],
+		["W / S", "Speed up / slow down"],
+		["UP / DOWN", "Climb / descend"],
+		["SPACE", "Fire missile (lock on first)"],
+		["G", "Fire gun (hold)"],
+		["F", "Deploy flares (vs missiles)"],
+		["E", "Fire AGM (ground targets)"],
+		["P", "Pause / main menu"],
+		["C", "Toggle this screen"],
+	]
+
+	for entry in controls:
+		var row := HBoxContainer.new()
+		var key_label := Label.new()
+		key_label.text = entry[0]
+		key_label.custom_minimum_size.x = 130
+		key_label.add_theme_font_size_override("font_size", 16)
+		key_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+		row.add_child(key_label)
+
+		var desc_label := Label.new()
+		desc_label.text = entry[1]
+		desc_label.add_theme_font_size_override("font_size", 16)
+		desc_label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85))
+		row.add_child(desc_label)
+
+		vbox.add_child(row)
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 8
+	vbox.add_child(spacer)
+
+	var hint := Label.new()
+	hint.text = "Press [C] to close"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.4, 0.45, 0.5))
+	vbox.add_child(hint)
+
+	add_child(_controls_panel)
+
+	_controls_panel.modulate.a = 0.0
+	_controls_panel.scale = Vector2(0.8, 0.8)
+	_controls_panel.pivot_offset = _controls_panel.size / 2.0
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.tween_property(_controls_panel, "modulate:a", 1.0, 0.2)
+	tween.parallel().tween_property(_controls_panel, "scale", Vector2.ONE, 0.3)
+
+func hide_controls() -> void:
+	if not _controls_panel:
+		return
+	get_tree().paused = false
+	_controls_panel.queue_free()
+	_controls_panel = null
 
 # --- AWACS radio ---
 

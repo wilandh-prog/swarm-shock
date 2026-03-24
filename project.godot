@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Swarm Shock"
-config/description="Neon-themed survival action game with chain lightning mechanics"
+config/name="Danger Zone"
+config/description="Top Gun-inspired aerial combat browser game"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"

@@ -5,12 +5,17 @@ extends Control
 @onready var kills_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/KillsValue
 @onready var level_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/LevelValue
 @onready var xp_label: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/XPValue
+@onready var time_best: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/TimeBest
+@onready var kills_best: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/KillsBest
+@onready var level_best: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/LevelBest
+@onready var xp_best: Label = $PanelContainer/MarginContainer/VBoxContainer/StatsContainer/XPBest
 @onready var double_xp_button: Button = $PanelContainer/MarginContainer/VBoxContainer/DoubleXPButton
 @onready var retry_button: Button = $PanelContainer/MarginContainer/VBoxContainer/RetryButton
 @onready var menu_button: Button = $PanelContainer/MarginContainer/VBoxContainer/MenuButton
 @onready var title_label: Label = $PanelContainer/MarginContainer/VBoxContainer/TitleLabel
 
 var _run_stats: Dictionary = {}
+var _new_bests: Dictionary = {}
 var _doubled: bool = false
 
 # Animated counters
@@ -33,6 +38,7 @@ func _ready() -> void:
 
 	_apply_neon_theme()
 	_animate_in()
+	_show_new_bests()
 
 	# Start counter animation after panel appears
 	await get_tree().create_timer(0.5).timeout
@@ -129,6 +135,18 @@ func _on_menu() -> void:
 	var tween := create_tween()
 	tween.tween_property(self, "modulate:a", 0.0, 0.2)
 	tween.tween_callback(func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+
+func _show_new_bests() -> void:
+	var best_text := "NEW BEST!"
+	# If this run's stat equals the stored best, it was set this run
+	if _run_stats.get("kills", 0) >= GameManager.best_kills and GameManager.best_kills > 0:
+		kills_best.text = best_text
+	if _run_stats.get("time", 0.0) >= GameManager.best_time and GameManager.best_time > 0.0:
+		time_best.text = best_text
+	if _run_stats.get("level", 1) >= GameManager.best_level and GameManager.best_level > 1:
+		level_best.text = best_text
+	if _run_stats.get("xp_earned", 0) >= GameManager.best_xp and GameManager.best_xp > 0:
+		xp_best.text = best_text
 
 func _on_double_xp() -> void:
 	if _doubled:

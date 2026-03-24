@@ -2,7 +2,7 @@ extends Node
 ## Handles saving and loading persistent game data.
 ## Uses CrazySdk Data module on web, file system locally.
 
-const SAVE_KEY: String = "swarm_shock_save"
+const SAVE_KEY: String = "danger_zone_save"
 const SAVE_PATH: String = "user://save_data.json"
 
 func _ready() -> void:
@@ -17,6 +17,11 @@ func save_all() -> void:
 		"unlocked_characters": GameManager.unlocked_characters,
 		"upgrade_levels": GameManager.upgrade_levels,
 		"selected_character": GameManager.selected_character,
+		"best_kills": GameManager.best_kills,
+		"best_time": GameManager.best_time,
+		"best_level": GameManager.best_level,
+		"best_xp": GameManager.best_xp,
+		"best_wave": GameManager.best_wave,
 	}
 	var json_string := JSON.stringify(data)
 
@@ -63,3 +68,13 @@ func load_all() -> void:
 			GameManager.upgrade_levels[key] = int(data["upgrade_levels"][key])
 	if data.has("selected_character"):
 		GameManager.selected_character = str(data["selected_character"])
+	if data.has("best_kills"):
+		GameManager.best_kills = int(data["best_kills"])
+	if data.has("best_time"):
+		GameManager.best_time = float(data["best_time"])
+	if data.has("best_level"):
+		GameManager.best_level = int(data["best_level"])
+	if data.has("best_xp"):
+		GameManager.best_xp = int(data["best_xp"])
+	if data.has("best_wave"):
+		GameManager.best_wave = int(data["best_wave"])

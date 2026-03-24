@@ -29,6 +29,14 @@ var upgrade_levels: Dictionary = {
 }
 var selected_character: String = "spark"
 
+# --- Personal bests ---
+var best_kills: int = 0
+var best_time: float = 0.0
+var best_level: int = 0
+var best_xp: int = 0
+var best_wave: int = 0
+var run_wave: int = 0
+
 # --- Entity tracking (cached lists, avoids get_nodes_in_group every frame) ---
 var enemies_alive: Array[Area3D] = []
 var enemy_missiles: Array[Area3D] = []
@@ -106,6 +114,7 @@ func start_run() -> void:
 	run_xp = 0
 	run_xp_to_next = 5
 	run_xp_earned = 0
+	run_wave = 0
 	_first_gameplay = false
 	CrazySdk.gameplay_start()
 	run_started.emit()
@@ -113,11 +122,28 @@ func start_run() -> void:
 func end_run() -> void:
 	run_active = false
 	CrazySdk.gameplay_stop()
+	var new_bests := {}
+	if run_kills > best_kills:
+		new_bests["kills"] = true
+		best_kills = run_kills
+	if run_time > best_time:
+		new_bests["time"] = true
+		best_time = run_time
+	if run_level > best_level:
+		new_bests["level"] = true
+		best_level = run_level
+	if run_xp_earned > best_xp:
+		new_bests["xp"] = true
+		best_xp = run_xp_earned
+	if run_wave > best_wave:
+		new_bests["wave"] = true
+		best_wave = run_wave
 	var stats := {
 		"time": run_time,
 		"kills": run_kills,
 		"level": run_level,
 		"xp_earned": run_xp_earned,
+		"new_bests": new_bests,
 	}
 	xp_total += run_xp_earned
 	SaveManager.save_all()

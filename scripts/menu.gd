@@ -22,6 +22,7 @@ func _ready() -> void:
 	upgrade_panel.visible = false
 	_update_xp_display(GameManager.xp_total)
 	_apply_neon_theme()
+	_create_best_scores()
 	_animate_in()
 	CrazySdk.loading_stop()
 
@@ -185,6 +186,49 @@ func _update_xp_display(amount: int) -> void:
 		var tween := create_tween()
 		tween.tween_property(xp_label, "scale", Vector2(1.15, 1.15), 0.08)
 		tween.tween_property(xp_label, "scale", Vector2.ONE, 0.12)
+
+func _create_best_scores() -> void:
+	if GameManager.best_kills == 0 and GameManager.best_time == 0.0:
+		return  # No games played yet
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	vbox.offset_top = -220.0
+	vbox.offset_bottom = -110.0
+	vbox.offset_left = -120.0
+	vbox.offset_right = 120.0
+	vbox.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	vbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	vbox.add_theme_constant_override("separation", 2)
+	add_child(vbox)
+
+	var header := Label.new()
+	header.text = "PERSONAL BEST"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 16)
+	header.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0, 0.7))
+	vbox.add_child(header)
+
+	var minutes := int(GameManager.best_time) / 60
+	var seconds := int(GameManager.best_time) % 60
+	var lines := [
+		"Kills: %d" % GameManager.best_kills,
+		"Time: %02d:%02d" % [minutes, seconds],
+		"Wave: %d" % GameManager.best_wave,
+		"Level: %d" % GameManager.best_level,
+		"XP: %d" % GameManager.best_xp,
+	]
+	for line in lines:
+		var lbl := Label.new()
+		lbl.text = line
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.add_theme_color_override("font_color", Color(0.5, 0.55, 0.6, 0.6))
+		vbox.add_child(lbl)
+
+	vbox.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(vbox, "modulate:a", 1.0, 0.5).set_delay(0.8)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
