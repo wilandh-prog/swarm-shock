@@ -349,6 +349,90 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 
 	return root
 
+static func gun_hit(pos: Vector3) -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+
+	# Small flash
+	var flash := MeshInstance3D.new()
+	var flash_mesh := SphereMesh.new()
+	flash_mesh.radius = 4.0
+	flash_mesh.height = 8.0
+	flash_mesh.radial_segments = 6
+	flash_mesh.rings = 3
+	var flash_mat := StandardMaterial3D.new()
+	flash_mat.albedo_color = Color(1.0, 0.9, 0.6, 0.9)
+	flash_mat.emission_enabled = true
+	flash_mat.emission = Color(1.0, 0.7, 0.3)
+	flash_mat.emission_energy_multiplier = 6.0
+	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flash_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	flash_mesh.material = flash_mat
+	flash.mesh = flash_mesh
+	root.add_child(flash)
+
+	# Fire puffs
+	var fire := CPUParticles3D.new()
+	fire.emitting = false
+	fire.one_shot = true
+	fire.amount = 8
+	fire.lifetime = 0.3
+	fire.explosiveness = 0.95
+	fire.direction = Vector3.ZERO
+	fire.spread = 180.0
+	fire.initial_velocity_min = 30.0
+	fire.initial_velocity_max = 80.0
+	fire.gravity = Vector3(0, 40, 0)
+	fire.damping_min = 60.0
+	fire.damping_max = 100.0
+	fire.scale_amount_min = 4.0
+	fire.scale_amount_max = 10.0
+	fire.scale_amount_curve = _create_fade_curve()
+	var fire_grad := Gradient.new()
+	fire_grad.set_color(0, Color(1.0, 1.0, 0.7, 1.0))
+	fire_grad.add_point(0.2, Color(1.0, 0.7, 0.15, 0.9))
+	fire_grad.add_point(0.5, Color(1.0, 0.3, 0.05, 0.6))
+	fire_grad.set_color(1, Color(0.3, 0.05, 0.01, 0.0))
+	fire.color_ramp = fire_grad
+	fire.mesh = _get_fire_quad()
+	root.add_child(fire)
+	fire.set_deferred("emitting", true)
+
+	# Sparks
+	var sparks := CPUParticles3D.new()
+	sparks.emitting = false
+	sparks.one_shot = true
+	sparks.amount = 6
+	sparks.lifetime = 0.25
+	sparks.explosiveness = 0.98
+	sparks.direction = Vector3.ZERO
+	sparks.spread = 180.0
+	sparks.initial_velocity_min = 80.0
+	sparks.initial_velocity_max = 200.0
+	sparks.gravity = Vector3(0, -150, 0)
+	sparks.damping_min = 60.0
+	sparks.damping_max = 120.0
+	sparks.scale_amount_min = 0.8
+	sparks.scale_amount_max = 2.0
+	sparks.scale_amount_curve = _create_fade_curve()
+	var spark_grad := Gradient.new()
+	spark_grad.set_color(0, Color(1.0, 1.0, 0.6, 1.0))
+	spark_grad.add_point(0.3, Color(1.0, 0.6, 0.15, 0.8))
+	spark_grad.set_color(1, Color(1.0, 0.2, 0.05, 0.0))
+	sparks.color_ramp = spark_grad
+	root.add_child(sparks)
+	sparks.set_deferred("emitting", true)
+
+	root.ready.connect(func():
+		var tw := root.create_tween()
+		tw.tween_property(flash, "scale", Vector3.ONE * 2.5, 0.06)
+		tw.parallel().tween_property(flash_mat, "albedo_color:a", 0.0, 0.15)
+		tw.tween_callback(root.queue_free).set_delay(0.4)
+	)
+
+	return root
+
 static func chain_spark(pos: Vector3) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.emitting = false

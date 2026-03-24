@@ -282,6 +282,120 @@ func _branch_color(branch: String) -> Color:
 func is_upgrade_open() -> bool:
 	return upgrade_panel.visible
 
+# --- Escape menu ---
+
+var _escape_panel: PanelContainer = null
+
+func is_escape_open() -> bool:
+	return _escape_panel != null
+
+func show_escape_menu() -> void:
+	if _escape_panel:
+		return
+	get_tree().paused = true
+
+	_escape_panel = PanelContainer.new()
+	_escape_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_escape_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_escape_panel.custom_minimum_size = Vector2(360, 200)
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.03, 0.03, 0.1, 0.95)
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(0.9, 0.6, 0.2, 0.7)
+	panel_style.corner_radius_top_left = 12
+	panel_style.corner_radius_top_right = 12
+	panel_style.corner_radius_bottom_left = 12
+	panel_style.corner_radius_bottom_right = 12
+	panel_style.shadow_color = Color(0.9, 0.5, 0.1, 0.2)
+	panel_style.shadow_size = 10
+	_escape_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	_escape_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 16)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "RETURN TO MAIN MENU?"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(0.9, 0.7, 0.2))
+	vbox.add_child(title)
+
+	var warn := Label.new()
+	warn.text = "Progress will not be saved"
+	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	warn.add_theme_font_size_override("font_size", 14)
+	warn.add_theme_color_override("font_color", Color(0.6, 0.5, 0.5))
+	vbox.add_child(warn)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 16)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_child(btn_row)
+
+	var yes_btn := Button.new()
+	yes_btn.text = "MAIN MENU"
+	yes_btn.custom_minimum_size = Vector2(140, 45)
+	yes_btn.add_theme_font_size_override("font_size", 18)
+	yes_btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	var red := Color(0.9, 0.3, 0.2)
+	yes_btn.add_theme_stylebox_override("normal", _create_button_style(red, Color(0.1, 0.03, 0.03, 0.9)))
+	yes_btn.add_theme_stylebox_override("hover", _create_button_style(red.lightened(0.3), Color(0.15, 0.05, 0.05, 0.95)))
+	yes_btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.2, 0.08, 0.08, 1.0)))
+	yes_btn.pressed.connect(func():
+		get_tree().paused = false
+		GameManager.end_run()
+		get_tree().change_scene_to_file("res://scenes/menu.tscn")
+	)
+	btn_row.add_child(yes_btn)
+
+	var no_btn := Button.new()
+	no_btn.text = "RESUME"
+	no_btn.custom_minimum_size = Vector2(140, 45)
+	no_btn.add_theme_font_size_override("font_size", 18)
+	no_btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	var green := Color(0.2, 0.9, 0.4)
+	no_btn.add_theme_stylebox_override("normal", _create_button_style(green, Color(0.03, 0.1, 0.05, 0.9)))
+	no_btn.add_theme_stylebox_override("hover", _create_button_style(green.lightened(0.3), Color(0.05, 0.15, 0.08, 0.95)))
+	no_btn.add_theme_stylebox_override("pressed", _create_button_style(Color.WHITE, Color(0.08, 0.2, 0.1, 1.0)))
+	no_btn.pressed.connect(func():
+		hide_escape_menu()
+	)
+	btn_row.add_child(no_btn)
+
+	add_child(_escape_panel)
+
+	_escape_panel.modulate.a = 0.0
+	_escape_panel.scale = Vector2(0.8, 0.8)
+	_escape_panel.pivot_offset = _escape_panel.size / 2.0
+	var tween := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.tween_property(_escape_panel, "modulate:a", 1.0, 0.2)
+	tween.parallel().tween_property(_escape_panel, "scale", Vector2.ONE, 0.3)
+
+func hide_escape_menu() -> void:
+	if not _escape_panel:
+		return
+	get_tree().paused = false
+	_escape_panel.queue_free()
+	_escape_panel = null
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("pause") and is_escape_open():
+		hide_escape_menu()
+		get_viewport().set_input_as_handled()
+
 # --- AWACS radio ---
 
 func set_awacs_message(text: String) -> void:

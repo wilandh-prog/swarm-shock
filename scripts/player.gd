@@ -58,6 +58,8 @@ const MISSILE_REGEN_INTERVAL: float = 10.0
 var flare_count: int = 30
 var flare_count_max: int = 30
 var _flare_cooldown: float = 0.0
+var _flare_regen_timer: float = 0.0
+const FLARE_REGEN_INTERVAL: float = 8.0
 const FLARE_COOLDOWN: float = 0.3
 var _flare_key_was_pressed: bool = false
 
@@ -70,7 +72,6 @@ var _pulse_time: float = 0.0
 var _plane_pivot: Node3D
 var _plane_body: Node3D
 var _glow_light: OmniLight3D
-var _shadow: MeshInstance3D
 var _body_mat: StandardMaterial3D
 var _afterburner_meshes: Array[MeshInstance3D] = []
 var _afterburner_lights: Array[OmniLight3D] = []
@@ -209,50 +210,6 @@ func _setup_visuals() -> void:
 
 	if f14_model:
 		_setup_wing_sweep(jet_instance)
-
-	# Triangle shadow on ground (flat triangle via ArrayMesh)
-	_shadow = MeshInstance3D.new()
-	var arr_mesh := ArrayMesh.new()
-	var verts := PackedVector3Array([
-		# Delta fuselage (long pointed nose to wide tail)
-		Vector3(0, 0, -140),    # nose tip
-		Vector3(-15, 0, 80),    # left fuselage rear
-		Vector3(15, 0, 80),     # right fuselage rear
-		# Left swept wing
-		Vector3(0, 0, -40),     # wing root leading edge
-		Vector3(-90, 0, 70),    # left wingtip
-		Vector3(-10, 0, 80),    # wing root trailing edge
-		# Right swept wing
-		Vector3(0, 0, -40),     # wing root leading edge
-		Vector3(10, 0, 80),     # wing root trailing edge
-		Vector3(90, 0, 70),     # right wingtip
-		# Left tail fin
-		Vector3(-8, 0, 50),
-		Vector3(-35, 0, 90),
-		Vector3(-5, 0, 90),
-		# Right tail fin
-		Vector3(8, 0, 50),
-		Vector3(5, 0, 90),
-		Vector3(35, 0, 90),
-	])
-	var normals := PackedVector3Array()
-	for i in verts.size():
-		normals.append(Vector3.UP)
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var shadow_mat := StandardMaterial3D.new()
-	shadow_mat.albedo_color = Color(0, 0, 0, 0.4)
-	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	shadow_mat.no_depth_test = true
-	shadow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	arr_mesh.surface_set_material(0, shadow_mat)
-	_shadow.mesh = arr_mesh
-	_shadow.position.y = 1.0
-	add_child(_shadow)
 
 	# Glow light
 	_glow_light = OmniLight3D.new()
@@ -443,6 +400,15 @@ func _physics_process(delta: float) -> void:
 			_flare_sound_player.play()
 	_flare_key_was_pressed = f_pressed
 
+	# Flare regen
+	if flare_count < flare_count_max:
+		_flare_regen_timer += delta
+		if _flare_regen_timer >= FLARE_REGEN_INTERVAL:
+			_flare_regen_timer -= FLARE_REGEN_INTERVAL
+			flare_count += 1
+	else:
+		_flare_regen_timer = 0.0
+
 	# Invincibility
 	if _invincible:
 		_invincible_timer -= delta
@@ -471,17 +437,6 @@ func _update_visuals(delta: float) -> void:
 	if _plane_body:
 		_plane_body.rotation.z = _bank_angle
 		_plane_body.rotation.x = _pitch_angle
-
-	# Shadow: stays on ground, scales with altitude, follows heading
-	if _shadow:
-		_shadow.position.y = -global_position.y + 1.0
-		_shadow.rotation.y = -_heading
-		var alt_ratio: float = clampf(global_position.y / MAX_ALTITUDE, 0.0, 1.0)
-		var shadow_scale: float = 1.0 + alt_ratio * 5.0
-		_shadow.scale = Vector3(shadow_scale, 1.0, shadow_scale)
-		var sm: StandardMaterial3D = _shadow.material_override as StandardMaterial3D
-		if sm:
-			sm.albedo_color.a = 0.5 * (1.0 - alt_ratio * 0.8)
 
 	# Pulse glow
 	var pulse: float = (sin(_pulse_time * 3.0) + 1.0) * 0.5

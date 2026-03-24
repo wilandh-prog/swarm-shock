@@ -1065,8 +1065,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		get_viewport().set_input_as_handled()
 	if event.is_action_pressed("pause"):
-		if not hud.is_upgrade_open():
-			get_tree().paused = !get_tree().paused
+		if hud.is_escape_open():
+			hud.hide_escape_menu()
+		elif not hud.is_upgrade_open():
+			hud.show_escape_menu()
 	# DEBUG: press L to skip straight to landing
 	if event is InputEventKey and event.pressed and event.keycode == KEY_L:
 		if _phase == GamePhase.TUTORIAL or _phase == GamePhase.COMBAT:

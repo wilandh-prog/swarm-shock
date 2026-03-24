@@ -65,7 +65,6 @@ const TURN_ACCEL: float = 4.0
 var _plane_pivot: Node3D
 var _plane_body: Node3D
 var _model_instance: Node3D
-var _shadow: MeshInstance3D
 var _hp_bg: MeshInstance3D
 var _hp_fill: MeshInstance3D
 var _is_flashing: bool = false
@@ -74,7 +73,6 @@ var _is_flashing: bool = false
 static var _flash_mat_cached: StandardMaterial3D
 static var _proj_scene_cached: PackedScene
 static var _dmg_num_script_cached: GDScript
-static var _shadow_mat_cached: StandardMaterial3D
 static var _hp_bg_mat_cached: StandardMaterial3D
 static var _hp_fill_mat_cached: StandardMaterial3D
 
@@ -170,21 +168,6 @@ func _setup_visuals() -> void:
 	_plane_pivot.add_child(_plane_body)
 
 	_load_model()
-
-	# Blob shadow on ground
-	_shadow = MeshInstance3D.new()
-	var shadow_mesh := PlaneMesh.new()
-	shadow_mesh.size = Vector2(24.0, 24.0)
-	_shadow.mesh = shadow_mesh
-	if not _shadow_mat_cached:
-		_shadow_mat_cached = StandardMaterial3D.new()
-		_shadow_mat_cached.albedo_color = Color(0, 0, 0, 0.35)
-		_shadow_mat_cached.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_shadow_mat_cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_shadow_mat_cached.no_depth_test = true
-	_shadow.material_override = _shadow_mat_cached
-	_shadow.position.y = 1.0
-	add_child(_shadow)
 
 # Cached model scenes per path (shared across all enemies)
 static var _model_cache: Dictionary = {}
@@ -466,17 +449,6 @@ func _process(delta: float) -> void:
 	if _plane_body:
 		_plane_body.rotation.z = _bank_angle
 
-	# Flash decay — only toggle on state change, reuse cached material
-	if _flash_timer > 0.0:
-		_flash_timer -= delta
-		if _model_instance:
-			if _flash_timer > 0.0 and not _is_flashing:
-				_is_flashing = true
-				_set_model_flash(true)
-			elif _flash_timer <= 0.0 and _is_flashing:
-				_is_flashing = false
-				_set_model_flash(false)
-
 	# Hit scale spring back
 	if _hit_scale != 1.0:
 		_hit_scale = lerpf(_hit_scale, 1.0, 10.0 * delta)
@@ -485,12 +457,6 @@ func _process(delta: float) -> void:
 	var spawn_scale: float = minf(_spawn_time * 5.0, 1.0)
 	if _plane_pivot:
 		_plane_pivot.scale = Vector3.ONE * spawn_scale * _hit_scale
-
-	# Shadow
-	if _shadow:
-		_shadow.position.y = 1.0
-		var s: float = size_radius / 14.0
-		_shadow.scale = Vector3(s, 1.0, s)
 
 	# HP bar
 	if hp < max_hp and _hp_bg and _hp_fill:
@@ -588,8 +554,11 @@ func take_damage(amount: float) -> void:
 	if _is_dead:
 		return
 	hp -= amount
-	_flash_timer = 0.08
 	_hit_scale = 1.3
+
+	# Small explosion at hit point
+	var hit_fx := Particles.gun_hit(global_position)
+	get_tree().current_scene.add_child(hit_fx)
 
 	# Spawn damage number
 	if not _dmg_num_script_cached:
