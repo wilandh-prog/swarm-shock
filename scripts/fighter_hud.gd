@@ -854,20 +854,20 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 	# --- Lateral lineup (offset to port to avoid island/tower on starboard) ---
 	var lateral: float = _lateral_offset(to_carrier) - 150.0  # guide 150 units port of centerline
 	if absf(lateral) > 400.0:
-		var dir_txt: String = "RIGHT [D]" if lateral > 0 else "LEFT [A]"
+		var dir_txt: String = "RIGHT" if lateral > 0 else "LEFT"
 		commands.append({"text": "LINEUP %s" % dir_txt, "color": WARN_RED})
 	elif absf(lateral) > 100.0:
-		var dir_txt: String = "RIGHT [D]" if lateral > 0 else "LEFT [A]"
+		var dir_txt: String = "RIGHT" if lateral > 0 else "LEFT"
 		commands.append({"text": "CORRECT %s" % dir_txt, "color": HUD_ORANGE})
 	elif absf(lateral) > 30.0:
-		var dir_txt: String = "NUDGE RIGHT [D]" if lateral > 0 else "NUDGE LEFT [A]"
+		var dir_txt: String = "NUDGE RIGHT" if lateral > 0 else "NUDGE LEFT"
 		commands.append({"text": dir_txt, "color": HUD_YELLOW})
 	else:
 		commands.append({"text": "ON CENTERLINE", "color": HUD_GREEN})
 
 	# --- Heading ---
 	if absf(heading_diff) > 0.1:
-		var dir_txt: String = "LEFT [A]" if heading_diff > 0 else "RIGHT [D]"
+		var dir_txt: String = "LEFT" if heading_diff > 0 else "RIGHT"
 		commands.append({"text": "HEADING %s" % dir_txt, "color": HUD_ORANGE})
 	else:
 		commands.append({"text": "HDG OK", "color": HUD_GREEN})
@@ -877,9 +877,9 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 	var cruise: float = player.move_speed
 	var landing_max: float = cruise * 0.65
 	if player._current_speed >= cruise * 0.7:
-		commands.append({"text": "BRAKE! [S] %dKT" % knots, "color": WARN_RED})
+		commands.append({"text": "BRAKE! %dKT" % knots, "color": WARN_RED})
 	elif player._current_speed >= landing_max:
-		commands.append({"text": "SLOW [S] %dKT" % knots, "color": HUD_ORANGE})
+		commands.append({"text": "SLOW %dKT" % knots, "color": HUD_ORANGE})
 	else:
 		commands.append({"text": "SPD OK %dKT" % knots, "color": HUD_GREEN})
 
@@ -889,13 +889,13 @@ func _draw_landing_guidance(ss: Vector2) -> void:
 	ideal_alt = maxf(ideal_alt, landing_deck_y + 10.0)
 	var alt_error: float = player.global_position.y - ideal_alt
 	if alt_error > 200.0:
-		commands.append({"text": "DESCEND [UP]", "color": WARN_RED})
+		commands.append({"text": "DESCEND", "color": WARN_RED})
 	elif alt_error > 50.0:
-		commands.append({"text": "DESCEND [UP]", "color": HUD_ORANGE})
+		commands.append({"text": "DESCEND", "color": HUD_ORANGE})
 	elif alt_error < -100.0:
-		commands.append({"text": "PULL UP! [DOWN]", "color": WARN_RED})
+		commands.append({"text": "PULL UP!", "color": WARN_RED})
 	elif alt_error < -20.0:
-		commands.append({"text": "CLIMB [DOWN]", "color": HUD_YELLOW})
+		commands.append({"text": "CLIMB", "color": HUD_YELLOW})
 	else:
 		commands.append({"text": "GLIDE OK", "color": HUD_GREEN})
 

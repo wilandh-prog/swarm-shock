@@ -40,6 +40,7 @@ const MIN_ALTITUDE: float = -50.0
 const MAX_ALTITUDE: float = 4000.0
 var _target_altitude: float = 2000.0
 var landing_mode: bool = false
+var deck_min_altitude: float = -9999.0  # set by game.gd during landing
 
 # Banking & pitch
 var _bank_angle: float = 0.0
@@ -356,6 +357,11 @@ func _process(delta: float) -> void:
 		move_vel += right * turn_input * _current_speed * 0.4
 	move_vel.y = (_target_altitude - global_position.y) * 10.0
 	global_position += move_vel * delta
+
+	# Deck collision clamp (set by game.gd during carrier landing)
+	if global_position.y < deck_min_altitude:
+		global_position.y = deck_min_altitude
+		_target_altitude = maxf(_target_altitude, deck_min_altitude)
 
 	if global_position.y < -10.0:
 		take_damage(max_health * 10.0)

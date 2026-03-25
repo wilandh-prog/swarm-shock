@@ -102,7 +102,8 @@ var _splash_sound: AudioStreamPlayer
 var _loading_overlay: ColorRect
 var _loading_label: Label
 var _warmup_frames: int = 0
-const WARMUP_FRAME_COUNT: int = 10  # render N frames before showing game
+const WARMUP_FRAME_COUNT: int = 10
+var _deferred_mission_briefing: bool = false
 
 # Carrier
 var _carrier: Node3D
@@ -212,12 +213,9 @@ func _ready() -> void:
 	# Start run
 	GameManager.start_run()
 
-	# Mission 1 briefing
+	# Mission 1 briefing (after loading dismisses)
 	if GameManager.game_mode == "mission":
-		hud.show_mission_briefing("MISSION 1: AIR SUPREMACY",
-			"Clear hostile aircraft from the AO.\nOnce skies are clear, land on the carrier\nto prepare for a strike on an enemy convoy.",
-			func():
-				get_tree().paused = false)
+		_deferred_mission_briefing = true
 
 func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
@@ -283,7 +281,17 @@ func _process(delta: float) -> void:
 	if _warmup_frames < WARMUP_FRAME_COUNT:
 		_warmup_frames += 1
 		if _warmup_frames == WARMUP_FRAME_COUNT:
-			_dismiss_loading_overlay()
+			if _deferred_mission_briefing:
+				_deferred_mission_briefing = false
+				# Remove overlay instantly (tween won't run while paused)
+				if _loading_overlay:
+					_loading_overlay.get_parent().queue_free()
+					_loading_overlay = null
+				hud.show_mission_briefing("MISSION 1: AIR SUPREMACY",
+					"Clear hostile aircraft from the AO.\nOnce skies are clear, land on the carrier\nto prepare for a strike on an enemy convoy.",
+					func(): get_tree().paused = false)
+			else:
+				_dismiss_loading_overlay()
 		return
 
 	if not is_instance_valid(player):
@@ -899,12 +907,11 @@ func _update_landing(_delta: float) -> void:
 	var to_carrier: Vector3 = _carrier.global_position - player.global_position
 	var dist_horiz: float = Vector2(to_carrier.x, to_carrier.z).length()
 
-	# Deck collision clamp: prevent player from descending below deck when near carrier
+	# Deck collision: tell player the minimum altitude when near carrier
 	if dist_horiz < LANDING_ZONE_RADIUS:
-		var min_alt: float = _carrier_deck_y + 15.0  # just above deck visual
-		if player.global_position.y < min_alt:
-			player.global_position.y = min_alt
-			player._target_altitude = maxf(player._target_altitude, min_alt)
+		player.deck_min_altitude = _carrier_deck_y + 15.0
+	else:
+		player.deck_min_altitude = -9999.0
 
 	var alt_diff: float = player.global_position.y - _carrier_deck_y
 	var heading_raw: float = absf(fposmod(player._heading - _carrier_heading + PI, TAU) - PI)
@@ -1089,6 +1096,7 @@ func _spawn_convoy() -> void:
 # --- Player events ---
 
 func _on_player_leveled_up(level: int) -> void:
+	GameManager.run_level = level
 	if is_instance_valid(player):
 		var burst := Particles.level_up_burst(player.global_position)
 		add_child(burst)
@@ -1114,3 +1122,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.hide_escape_menu()
 		elif not hud.is_upgrade_open():
 			hud.show_escape_menu()
+	# Debug: L key skips to landing sequence in mission mode
+	if event is InputEventKey and event.pressed and event.keycode == KEY_L:
+		if GameManager.game_mode == "mission" and _phase in [GamePhase.TUTORIAL, GamePhase.COMBAT]:
+			# Clear enemies so landing triggers cleanly
+			for enemy in enemy_container.get_children():
+				enemy.queue_free()
+			_phase = GamePhase.COMBAT
+			_begin_landing_sequence()
