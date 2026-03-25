@@ -336,8 +336,8 @@ func _process(delta: float) -> void:
 	if _phase == GamePhase.TUTORIAL:
 		_update_tutorial(delta)
 	elif _phase == GamePhase.COMBAT:
-		# Contextual tutorial text during early waves
-		if _current_wave < 2:
+		# Contextual tutorial text only during first wave
+		if _current_wave < 1:
 			_update_tutorial_text()
 		var wc: Array[Dictionary] = _get_wave_config()
 		var max_waves: int = wc.size() if GameManager.game_mode == "mission" else 999999
@@ -362,10 +362,11 @@ func _process(delta: float) -> void:
 			elif enemy_container.get_child_count() == 0:
 				_waiting_for_next_wave = true
 				_wave_delay_timer = 0.0
+				hud.set_tutorial_text(PackedStringArray())
 				awacs_message("PICTURE CLEAN. STANDBY FOR TASKING.", 3.0)
 				# Level up every 2 waves cleared
 				if _current_wave > 0 and _current_wave % 2 == 1:
-					_on_player_leveled_up(_current_wave / 2 + 1)
+					_on_player_leveled_up(_current_wave / 2 + 2)
 
 		# Landing trigger: mission mode only, all waves done and all enemies dead
 		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0:
@@ -432,7 +433,27 @@ func _update_awacs(delta: float) -> void:
 		_awacs_timer = _awacs_current.get("duration", 4.0)
 		_speak_awacs(_awacs_current.get("text", ""))
 
+var _tts_voice_id: String = ""
+var _tts_initialized: bool = false
+
+func _init_tts() -> void:
+	_tts_initialized = true
+	var voices := DisplayServer.tts_get_voices()
+	# Prefer English voice for military callouts
+	for voice in voices:
+		var lang: String = voice.get("language", "").to_lower()
+		if lang.begins_with("en"):
+			_tts_voice_id = voice.get("id", "")
+			return
+	# No English voice found — disable TTS
+	_tts_voice_id = ""
+
 func _speak_awacs(text: String) -> void:
+	if not _tts_initialized:
+		_init_tts()
+	if _tts_voice_id.is_empty():
+		return  # no English voice available
+
 	var clean := text
 	# Strip key hints like [F], [G], [SPACE]
 	var regex := RegEx.new()
@@ -448,10 +469,8 @@ func _speak_awacs(text: String) -> void:
 	clean = clean.strip_edges()
 	if clean.is_empty():
 		return
-	# Slight pauses at punctuation give radio cadence without choppiness
 	var rate := 1.3 + clampf(float(clean.split(" ", false).size() - 3) * 0.1, 0.0, 0.7)
-	# pitch 1.5 = tinny radio, volume 70
-	DisplayServer.tts_speak(clean, "", 70, 1.5, rate)
+	DisplayServer.tts_speak(clean, _tts_voice_id, 100, 1.5, rate)
 
 # --- Tutorial ---
 
@@ -614,8 +633,8 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 	var diff_rate: float = 0.05 if GameManager.game_mode == "wave" else 0.15
 	var difficulty_mult: float = 1.0 + wave_index * diff_rate
 
-	# Clear tutorial text at wave 3
-	if wave_index >= 2:
+	# Clear tutorial text from wave 1 onward
+	if wave_index >= 1:
 		hud.set_tutorial_text(PackedStringArray())
 
 	# AWACS messages for wave start
@@ -888,10 +907,6 @@ func _begin_landing_sequence() -> void:
 	else:
 		_carrier.visible = true
 
-	print("=== LANDING SEQUENCE STARTED (Mission %d) ===" % _mission)
-	print("Carrier pos: ", _carrier.global_position)
-	print("Player heading: ", rad_to_deg(player._heading))
-	print("Player speed: ", player._current_speed)
 
 	# Tell HUD to start landing guidance
 	hud.start_landing_guidance(_carrier, _carrier_heading, _carrier_deck_y)
@@ -934,7 +949,6 @@ func _update_landing(_delta: float) -> void:
 	if dist_ok and alt_ok and hdg_ok and speed_ok and lat_ok:
 		_landing_timer += _delta
 		if _landing_timer > 0.5:
-			print(">>> LANDING SUCCESS! speed=%.0f (max=%.0f)" % [player._current_speed, landing_speed_max])
 			_on_landing_success()
 	else:
 		_landing_timer = maxf(_landing_timer - _delta * 2.0, 0.0)

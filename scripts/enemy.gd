@@ -185,7 +185,6 @@ func _load_model() -> void:
 	if not _model_cache.has(model_path):
 		var loaded = load(model_path)
 		_model_cache[model_path] = loaded
-		print("[Enemy] Loaded model: ", model_path, " -> ", loaded)
 
 	var scene: PackedScene = _model_cache[model_path]
 	if scene:
@@ -201,7 +200,6 @@ func _load_model() -> void:
 		return
 
 	# Fallback: procedural MiG-21 silhouette
-	print("[Enemy] FALLBACK for: ", model_path, " type=", enemy_type)
 	_load_procedural_model(config, model_scale)
 
 func _load_procedural_model(config: Dictionary, model_scale: float) -> void:
