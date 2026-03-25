@@ -154,6 +154,7 @@ float caustic(vec2 p, float t) {
 }
 
 varying float v_terrain;
+varying float v_wave;
 
 void vertex() {
 	vec2 wp = UV * 3000.0 + offset;
@@ -163,7 +164,9 @@ void vertex() {
 
 	float land_factor = smoothstep(-0.04, 0.04, terrain - water_level);
 	float land_h = max(terrain - water_level, 0.0) * terrain_height;
-	float w = wave_at(wp, t) * wave_height;
+	float w_raw = wave_at(wp, t);
+	float w = w_raw * wave_height;
+	v_wave = w_raw;  // share with fragment
 
 	// Fade vertex displacement near edges — per-pixel normals handle distant waves
 	float edge_dist = max(abs(UV.x - 0.5), abs(UV.y - 0.5)) * 2.0;
@@ -179,76 +182,62 @@ void fragment() {
 	float above = terrain - water_level;
 	float land_factor = smoothstep(-0.04, 0.04, above);
 
-	// --- LAND COLOR ---
-	float above_clamped = max(above, 0.0);
-
-	// Cheap noise to break up zone contour lines (reuse single noise calls)
-	float zone_noise = noise(world_uv * 0.005 + vec2(77.0, 33.0)) * 0.05 - 0.025;
-	float ah = above_clamped + zone_noise;
-
-	// Zones by perturbed height
-	float beach_t = smoothstep(0.0, 0.04, ah);
-	float grass_t = smoothstep(0.015, 0.09, ah);
-	float forest_t = smoothstep(0.08, 0.22, ah);
-	float rock_t = smoothstep(0.22, 0.42, ah);
-
-	// Beach sand
-	vec3 land_color = sand_color.rgb;
-	float wet = 1.0 - smoothstep(0.0, 0.02, above_clamped);
-	land_color = mix(land_color, sand_color.rgb * 0.65, wet);
-
-	// Grass
-	float grass_noise = fbm2(world_uv * 0.006);
-	vec3 grass = mix(grass_light.rgb, grass_dark.rgb, grass_noise);
-	land_color = mix(land_color, grass, grass_t);
-
-	// Forest patches
-	float forest_noise = fbm2(world_uv * 0.003 + vec2(77.0, 55.0));
-	float forest_mask = forest_t * smoothstep(0.35, 0.6, forest_noise);
-	land_color = mix(land_color, forest_color.rgb, forest_mask);
-	float canopy = noise(world_uv * 0.025);
-	land_color = mix(land_color, forest_color.rgb * (0.7 + canopy * 0.6), forest_mask * 0.5);
-
-	// Rocky peaks
-	float rock_noise = noise(world_uv * 0.01 + vec2(200.0, 150.0));
-	land_color = mix(land_color, rock_color.rgb * (0.8 + rock_noise * 0.4), rock_t);
-
-	// Cheap terrain shading from noise gradient instead of extra terrain_at calls
-	float shade_n = noise(world_uv * 0.002 + vec2(50.0, 80.0));
-	float shade = 0.65 + shade_n * 0.3 + above_clamped * 0.5;
-	shade = clamp(shade, 0.5, 1.0);
-	land_color *= shade;
-
-	// Shore foam on land side
-	float shore_foam = smoothstep(0.015, 0.0, above_clamped);
-	float foam_wave = sin(world_uv.x * 0.08 + t * 2.0) * 0.5 + 0.5;
-	foam_wave *= sin(world_uv.y * 0.06 + t * 1.5) * 0.5 + 0.5;
-	land_color = mix(land_color, foam_color.rgb, shore_foam * foam_wave * 0.7);
-
-	// --- WATER COLOR ---
-	// Distance for LOD and fog (computed early for performance)
+	// Distance for LOD and fog
 	float dist_uv = max(abs(UV.x - 0.5), abs(UV.y - 0.5)) * 2.0;
 	float dist_fade = smoothstep(0.3, 0.6, dist_uv);
 	float fog = dist_fade * fog_intensity;
 
-	vec3 water_col = horizon_color.rgb; // default for fully fogged pixels
+	// --- LAND COLOR (skip for pure water pixels) ---
+	vec3 land_color = sand_color.rgb;
+	if (land_factor > 0.01) {
+		float above_clamped = max(above, 0.0);
+		float zone_noise = noise(world_uv * 0.005 + vec2(77.0, 33.0)) * 0.05 - 0.025;
+		float ah = above_clamped + zone_noise;
 
-	if (dist_fade < 0.99) {
+		float grass_t = smoothstep(0.015, 0.09, ah);
+		float forest_t = smoothstep(0.08, 0.22, ah);
+		float rock_t = smoothstep(0.22, 0.42, ah);
+
+		float wet = 1.0 - smoothstep(0.0, 0.02, above_clamped);
+		land_color = mix(land_color, sand_color.rgb * 0.65, wet);
+
+		float grass_noise = fbm2(world_uv * 0.006);
+		vec3 grass = mix(grass_light.rgb, grass_dark.rgb, grass_noise);
+		land_color = mix(land_color, grass, grass_t);
+
+		float forest_noise = fbm2(world_uv * 0.003 + vec2(77.0, 55.0));
+		float forest_mask = forest_t * smoothstep(0.35, 0.6, forest_noise);
+		land_color = mix(land_color, forest_color.rgb, forest_mask);
+		float canopy = noise(world_uv * 0.025);
+		land_color = mix(land_color, forest_color.rgb * (0.7 + canopy * 0.6), forest_mask * 0.5);
+
+		float rock_noise = noise(world_uv * 0.01 + vec2(200.0, 150.0));
+		land_color = mix(land_color, rock_color.rgb * (0.8 + rock_noise * 0.4), rock_t);
+
+		float shade_n = noise(world_uv * 0.002 + vec2(50.0, 80.0));
+		float shade = clamp(0.65 + shade_n * 0.3 + above_clamped * 0.5, 0.5, 1.0);
+		land_color *= shade;
+
+		float shore_foam = smoothstep(0.015, 0.0, above_clamped);
+		float foam_wave = sin(world_uv.x * 0.08 + t * 2.0) * 0.5 + 0.5;
+		foam_wave *= sin(world_uv.y * 0.06 + t * 1.5) * 0.5 + 0.5;
+		land_color = mix(land_color, foam_color.rgb, shore_foam * foam_wave * 0.7);
+	}
+
+	// --- WATER COLOR (skip for pure land pixels) ---
+	vec3 water_col = horizon_color.rgb;
+	if (land_factor < 0.99 && dist_fade < 0.99) {
 		float below = max(water_level - terrain, 0.0);
-		float depth_raw = below / 0.25;
-		float beer = exp(-depth_raw * 2.0);
+		float beer = exp(-below / 0.25 * 2.0);
 
-		// Base depth color
 		water_col = mix(deep_color.rgb, shallow_color.rgb, beer);
 
-		// Tropical color patches
 		float color_var = fbm2(world_uv * 0.0006 + vec2(200.0, 300.0));
 		water_col = mix(water_col, vec3(0.1, 0.4, 0.48), beer * color_var * 0.4);
 
-		// View direction in world space
 		vec3 view_dir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 
-		// Macro wave normal (analytical sine derivatives, per-pixel)
+		// Macro wave normal (analytical sine derivatives)
 		vec2 uv_wave = world_uv * 0.004;
 		float macro_dx = cos(uv_wave.x * 3.0 + t * 1.2) * 3.0 * 0.004 * 0.25
 		               + cos((uv_wave.x + uv_wave.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
@@ -257,7 +246,6 @@ void fragment() {
 		               + cos((uv_wave.x + uv_wave.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
 		               + cos(uv_wave.x * 1.5 - uv_wave.y * 1.8 + t * 0.7) * (-1.8) * 0.004 * 0.1;
 
-		// Detail normal (analytical C2 noise derivatives) — skip at distance
 		float detail_fade = 1.0 - smoothstep(0.15, 0.35, dist_uv);
 		float nx = -macro_dx * 3.0;
 		float nz = -macro_dz * 3.0;
@@ -268,50 +256,42 @@ void fragment() {
 		}
 		vec3 normal_w = normalize(vec3(nx, 1.0, nz));
 
-		// Per-pixel wave value for color effects
-		float w_val = wave_at(world_uv, t);
+		float w_val = v_wave;
 
-		// Schlick fresnel (F0 = 0.02 for water IOR 1.33)
+		// Fresnel
 		float cos_theta = max(dot(normal_w, view_dir), 0.0);
 		float fresnel = 0.02 + 0.98 * pow(1.0 - cos_theta, 5.0);
 		water_col = mix(water_col, sky_reflect_color.rgb, fresnel);
 
 		// Subsurface scattering
-		float sss = smoothstep(-0.1, 0.4, w_val) * beer;
-		water_col += sss_color.rgb * sss * 0.4;
+		water_col += sss_color.rgb * smoothstep(-0.1, 0.4, w_val) * beer * 0.4;
 
-		// Sun specular highlights with sparkle
-		vec3 sun_d = normalize(sun_direction);
-		vec3 half_vec = normalize(sun_d + view_dir);
+		// Sun specular
+		vec3 half_vec = normalize(normalize(sun_direction) + view_dir);
 		float spec = pow(max(dot(normal_w, half_vec), 0.0), specular_power);
 		float sparkle = noise(world_uv * 0.05 + vec2(t * 2.0, -t * 1.5));
-		spec *= 0.7 + sparkle * 0.6;
-		water_col += vec3(1.0, 0.95, 0.85) * spec * specular_intensity;
+		water_col += vec3(1.0, 0.95, 0.85) * spec * (0.7 + sparkle * 0.6) * specular_intensity;
 
-		// Wave brightness/darkness
+		// Wave brightness
 		water_col = mix(water_col, shallow_color.rgb * 1.3, smoothstep(-0.2, 0.5, w_val) * 0.15);
 		water_col = mix(water_col, deep_color.rgb, smoothstep(0.1, -0.4, w_val) * 0.15);
 
-		// Caustics — only very near camera (expensive 3x3 loops), single layer only
+		// Caustics — very near only
 		if (dist_uv < 0.2) {
 			float c = caustic(world_uv * 0.012 + vec2(t * 0.3, t * 0.2), t);
-			float caust = smoothstep(0.15, 0.0, c) * 0.5 * beer;
-			water_col += vec3(0.15, 0.35, 0.45) * caust;
+			water_col += vec3(0.15, 0.35, 0.45) * smoothstep(0.15, 0.0, c) * 0.5 * beer;
 		}
 
 		// Whitecap foam
 		float foam_n1 = fbm2(world_uv * 0.008 + vec2(t * 0.3, -t * 0.2));
 		float foam_n2 = noise(world_uv * 0.025 + vec2(t * 0.6, t * 0.4));
-		float whitecap = smoothstep(0.55, 0.7, foam_n1) * smoothstep(0.5, 0.65, foam_n2);
-		whitecap *= smoothstep(-0.1, 0.3, w_val);
-		float foam_flicker = sin(world_uv.x * 0.03 + t * 3.0) * 0.3 + 0.7;
-		water_col = mix(water_col, foam_color.rgb, whitecap * foam_flicker * 0.7);
+		float whitecap = smoothstep(0.55, 0.7, foam_n1) * smoothstep(0.5, 0.65, foam_n2)
+		               * smoothstep(-0.1, 0.3, w_val);
+		water_col = mix(water_col, foam_color.rgb, whitecap * (sin(world_uv.x * 0.03 + t * 3.0) * 0.3 + 0.7) * 0.7);
 	}
 
 	// --- BLEND ---
 	vec3 color = mix(water_col, land_color, land_factor);
-
-	// Atmospheric haze
 	color = mix(color, horizon_color.rgb, fog);
 
 	ALBEDO = color;

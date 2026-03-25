@@ -310,16 +310,14 @@ func _apply_glow_to_meshes(node: Node) -> void:
 	for child in node.get_children():
 		_apply_glow_to_meshes(child)
 
-func _physics_process(delta: float) -> void:
-	# Steering: left/right turns the plane
+func _process(delta: float) -> void:
+	# --- Flight & input (all in _process for smooth rendering) ---
 	var turn_input: float = Input.get_axis("move_left", "move_right")
 
-	# Turn rate scales inversely with speed — harder to turn at high speed
 	var speed_ratio: float = _current_speed / move_speed
 	var turn_scale: float = lerpf(1.2, 0.7, clampf((speed_ratio - MIN_SPEED_MULT) / (MAX_SPEED_MULT - MIN_SPEED_MULT), 0.0, 1.0))
 	var effective_turn_rate: float = MAX_TURN_RATE * turn_scale
 
-	# Smoothly accelerate/decelerate turn speed
 	if absf(turn_input) > 0.1:
 		_turn_speed = move_toward(_turn_speed, turn_input * effective_turn_rate, TURN_ACCEL * delta)
 	else:
@@ -327,27 +325,23 @@ func _physics_process(delta: float) -> void:
 
 	_heading += _turn_speed * delta
 
-	# Speed control: W = boost, S = brake
-	var speed_input: float = Input.get_axis("move_down", "move_up") # W is "up" = positive
+	var speed_input: float = Input.get_axis("move_down", "move_up")
 	var target_speed: float = move_speed
 	if speed_input > 0.1:
 		target_speed = move_speed * MAX_SPEED_MULT
 	elif speed_input < -0.1:
 		target_speed = move_speed * MIN_SPEED_MULT
 	elif landing_mode:
-		target_speed = _current_speed  # Throttle hold: no input = keep speed
+		target_speed = _current_speed
 	_current_speed = move_toward(_current_speed, target_speed, SPEED_ACCEL * delta)
 
-	# Speed bleeds in hard turns — turning costs energy
 	var turn_intensity: float = absf(_turn_speed) / MAX_TURN_RATE
 	var speed_bleed: float = turn_intensity * turn_intensity * TURN_SPEED_BLEED * delta
 	_current_speed = maxf(_current_speed - speed_bleed, move_speed * MIN_SPEED_MULT)
 
-	# Forward direction from heading
 	var forward := Vector3(sin(_heading), 0.0, -cos(_heading))
 	facing_direction = forward
 
-	# Altitude: Arrow Down = climb, Arrow Up = descend (inverted, like flight stick)
 	var alt_input: float = 0.0
 	if Input.is_key_pressed(KEY_DOWN):
 		alt_input += 1.0
@@ -355,19 +349,18 @@ func _physics_process(delta: float) -> void:
 		alt_input -= 1.0
 	_target_altitude = clampf(_target_altitude + alt_input * ALTITUDE_SPEED * delta, MIN_ALTITUDE, MAX_ALTITUDE)
 
-	velocity = forward * _current_speed
-	# Landing mode: A/D also gives lateral drift for lineup corrections
+	# Direct position update (no move_and_slide — no collision needed)
+	var move_vel := forward * _current_speed
 	if landing_mode and absf(turn_input) > 0.1:
 		var right := Vector3(cos(_heading), 0.0, sin(_heading))
-		velocity += right * turn_input * _current_speed * 0.4
-	velocity.y = (_target_altitude - global_position.y) * 10.0
-	move_and_slide()
+		move_vel += right * turn_input * _current_speed * 0.4
+	move_vel.y = (_target_altitude - global_position.y) * 10.0
+	global_position += move_vel * delta
 
-	# Ground/water collision — instant death
 	if global_position.y < -10.0:
 		take_damage(max_health * 10.0)
 
-	# Missile regen — only when at 0, one every 10s
+	# Missile regen
 	if missile_ammo <= 0:
 		_missile_regen_timer += delta
 		if _missile_regen_timer >= MISSILE_REGEN_INTERVAL:
@@ -376,7 +369,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_missile_regen_timer = 0.0
 
-	# Flare deployment (F key)
+	# Flare deployment
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
 	var f_pressed: bool = Input.is_key_pressed(KEY_F)
 	if f_pressed and not _flare_key_was_pressed and _flare_cooldown <= 0.0 and flare_count > 0:
@@ -407,7 +400,7 @@ func _physics_process(delta: float) -> void:
 	_update_visuals(delta)
 
 func _update_visuals(delta: float) -> void:
-	# Heading rotation (negated to match Godot's Y-rotation convention)
+	# Heading rotation (direct — movement and visuals both in _process)
 	if _plane_pivot:
 		_plane_pivot.rotation.y = -_heading
 

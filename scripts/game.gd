@@ -98,6 +98,12 @@ var _ambient_particles: CPUParticles3D
 # Audio
 var _splash_sound: AudioStreamPlayer
 
+# Loading overlay (shader warmup)
+var _loading_overlay: ColorRect
+var _loading_label: Label
+var _warmup_frames: int = 0
+const WARMUP_FRAME_COUNT: int = 10  # render N frames before showing game
+
 # Carrier
 var _carrier: Node3D
 
@@ -200,6 +206,9 @@ func _ready() -> void:
 		_splash_sound.bus = &"Master"
 		add_child(_splash_sound)
 
+	# Loading overlay — covers shader compilation stutter
+	_create_loading_overlay()
+
 	# Start run
 	GameManager.start_run()
 
@@ -214,8 +223,8 @@ func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(100000, 100000)
-	plane.subdivide_width = 128
-	plane.subdivide_depth = 128
+	plane.subdivide_width = 64
+	plane.subdivide_depth = 64
 	_ground.mesh = plane
 	_ground.position = Vector3(0, -18, 0)
 
@@ -226,6 +235,31 @@ func _setup_background() -> void:
 		_ground.material_override = _bg_shader_mat
 
 	add_child(_ground)
+
+func _create_loading_overlay() -> void:
+	var canvas := CanvasLayer.new()
+	canvas.layer = 100  # above everything
+	add_child(canvas)
+
+	_loading_overlay = ColorRect.new()
+	_loading_overlay.color = Color(0.02, 0.02, 0.06, 1.0)
+	_loading_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(_loading_overlay)
+
+	_loading_label = Label.new()
+	_loading_label.text = "LOADING..."
+	_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_loading_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_label.add_theme_font_size_override("font_size", 32)
+	_loading_label.add_theme_color_override("font_color", Color(0.3, 0.7, 1.0))
+	_loading_overlay.add_child(_loading_label)
+
+func _dismiss_loading_overlay() -> void:
+	if _loading_overlay:
+		var tween := create_tween()
+		tween.tween_property(_loading_overlay, "modulate:a", 0.0, 0.4)
+		tween.tween_callback(_loading_overlay.get_parent().queue_free)
 
 func _setup_carrier() -> void:
 	var carrier_scene: PackedScene = load("res://assets/carrier/essex_scb-125_generic.glb")
@@ -245,6 +279,13 @@ func _setup_carrier() -> void:
 	add_child(_carrier)
 
 func _process(delta: float) -> void:
+	# Shader warmup: let GPU compile shaders behind loading screen
+	if _warmup_frames < WARMUP_FRAME_COUNT:
+		_warmup_frames += 1
+		if _warmup_frames == WARMUP_FRAME_COUNT:
+			_dismiss_loading_overlay()
+		return
+
 	if not is_instance_valid(player):
 		return
 
