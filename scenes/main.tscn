@@ -40,7 +40,7 @@ alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 0.7, 1.0, 1)
 theme_override_font_sizes/font_size = 72
-text = "DANGER ZONE"
+text = "NAVY GUN"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="VBoxContainer"]

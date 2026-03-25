@@ -2,7 +2,7 @@ extends Node
 ## Handles saving and loading persistent game data.
 ## Uses CrazySdk Data module on web, file system locally.
 
-const SAVE_KEY: String = "danger_zone_save"
+const SAVE_KEY: String = "navy_gun_save"
 const SAVE_PATH: String = "user://save_data.json"
 
 func _ready() -> void:

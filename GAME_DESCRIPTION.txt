@@ -1,0 +1,37 @@
+NAVY GUN
+========
+
+Description
+-----------
+Navy Gun is a fast-paced aerial combat game and a loving homage to Top Gun on the NES. Scramble your F-14 Tomcat from an aircraft carrier, engage waves of hostile fighters over the open ocean, and prove yourself as the ultimate naval aviator.
+
+Dogfight enemy MiGs using heat-seeking missiles and your trusty M61 Vulcan cannon. Deploy countermeasure flares to shake off incoming missiles, manage your speed and altitude, and level up between waves to upgrade your aircraft. When the skies are clear, line up for a carrier landing -- just like the legendary (and notoriously difficult) NES original.
+
+In Mission Mode, complete two objectives: clear the airspace of hostile fighters, then land on the carrier to rearm before launching a strike against an enemy convoy of missile cruisers.
+
+Features:
+- F-14 Tomcat with variable-sweep wings
+- Lock-on missile system and lead-computing gun sight
+- Carrier landing sequence with glideslope and lineup guidance
+- Wave-based endless mode and two-part mission mode
+- Upgrade system between waves (damage, fire rate, health, and more)
+- AWACS radio callouts with text-to-speech
+- Full HUD with speed/altitude tapes, radar, and heading compass
+
+
+Controls
+--------
+FLIGHT:
+  A / D          Turn left / right
+  W / S          Speed up / slow down
+  Up / Down      Change altitude (flight stick style: Up = descend, Down = climb)
+
+COMBAT:
+  SPACE          Fire missile (aim at enemy to lock on first)
+  G (hold)       Fire gun
+  F              Deploy flares (use when missile incoming)
+  E              Fire AGM anti-ship missile (Mission 2, requires lock)
+
+OTHER:
+  P              Pause
+  C              Show all controls overlay
