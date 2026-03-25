@@ -166,10 +166,11 @@ func _ready() -> void:
 	# Aircraft carrier on the ocean
 	_setup_carrier()
 
-	# Directional light
+	# Directional light (needed for shaded F-14 and enemy models)
 	var dir_light := DirectionalLight3D.new()
 	dir_light.rotation_degrees = Vector3(-90, 0, 0)
 	dir_light.light_energy = 0.8
+	dir_light.shadow_enabled = false
 	add_child(dir_light)
 
 	# Ambient floating particles
@@ -213,8 +214,8 @@ func _setup_background() -> void:
 	_ground = MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(100000, 100000)
-	plane.subdivide_width = 256
-	plane.subdivide_depth = 256
+	plane.subdivide_width = 128
+	plane.subdivide_depth = 128
 	_ground.mesh = plane
 	_ground.position = Vector3(0, -18, 0)
 
@@ -1072,29 +1073,3 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.hide_escape_menu()
 		elif not hud.is_upgrade_open():
 			hud.show_escape_menu()
-	# DEBUG: press L to skip straight to landing
-	if event is InputEventKey and event.pressed and event.keycode == KEY_L:
-		if _phase == GamePhase.TUTORIAL or _phase == GamePhase.COMBAT:
-			for e in enemy_container.get_children():
-				e.queue_free()
-			_begin_landing_sequence()
-	# DEBUG: press 2 to skip straight to mission 2
-	if event is InputEventKey and event.pressed and event.keycode == KEY_2:
-		if _phase == GamePhase.TUTORIAL or _phase == GamePhase.COMBAT:
-			for e in enemy_container.get_children():
-				e.queue_free()
-			# Position carrier since we skipped landing
-			var forward := Vector3(sin(player._heading), 0.0, -cos(player._heading))
-			var carrier_pos := player.global_position + forward * 1000.0
-			carrier_pos.y = _carrier_mesh_y
-			_carrier.global_position = carrier_pos
-			_carrier.visible = true
-			var look_target := _carrier.global_position + forward
-			_carrier.look_at(Vector3(look_target.x, _carrier_mesh_y, look_target.z), Vector3.UP)
-			_carrier.rotate_y(-PI * 0.5 - deg_to_rad(8.0) + PI)
-			_carrier_heading = player._heading
-			# Freeze ocean
-			if _ground:
-				_ground.global_position.x = player.global_position.x
-				_ground.global_position.z = player.global_position.z
-			_begin_mission_2()

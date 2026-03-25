@@ -76,7 +76,7 @@ static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
 	var fire := CPUParticles3D.new()
 	fire.emitting = false
 	fire.one_shot = true
-	fire.amount = 40
+	fire.amount = 20
 	fire.lifetime = 0.9
 	fire.explosiveness = 0.93
 	fire.direction = Vector3(0, 1, 0)
@@ -104,7 +104,7 @@ static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
 	var sparks := CPUParticles3D.new()
 	sparks.emitting = false
 	sparks.one_shot = true
-	sparks.amount = 40
+	sparks.amount = 20
 	sparks.lifetime = 0.7
 	sparks.explosiveness = 0.98
 	sparks.direction = Vector3.ZERO
@@ -129,8 +129,8 @@ static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
 	var smoke := CPUParticles3D.new()
 	smoke.emitting = false
 	smoke.one_shot = true
-	smoke.amount = 40
-	smoke.lifetime = 3.5
+	smoke.amount = 20
+	smoke.lifetime = 2.5
 	smoke.explosiveness = 0.7
 	smoke.randomness = 0.4
 	smoke.direction = Vector3(0, 1, 0)
@@ -173,13 +173,6 @@ static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
 	ring.rotation.x = deg_to_rad(90.0)
 	root.add_child(ring)
 
-	# 6) OmniLight
-	var light := OmniLight3D.new()
-	light.light_color = Color(1.0, 0.6, 0.2)
-	light.light_energy = 15.0
-	light.omni_range = 150.0 * s
-	root.add_child(light)
-
 	root.ready.connect(func():
 		# Fireball: quick scale up from 0.4 → 1.0, then dissolve
 		fireball.scale = Vector3.ONE * 0.4
@@ -193,11 +186,6 @@ static func explosion(pos: Vector3, radius: float = 50.0) -> Node3D:
 		tw_ring.tween_property(ring, "scale", Vector3.ONE * 5.0, 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 		tw_ring.tween_property(ring_mat, "albedo_color:a", 0.0, 0.4)
 		tw_ring.chain().tween_callback(ring.queue_free)
-
-		# Light fade
-		var tw_light := root.create_tween()
-		tw_light.tween_property(light, "light_energy", 0.0, 0.6)
-		tw_light.tween_callback(light.queue_free)
 
 		root.create_tween().tween_callback(root.queue_free).set_delay(4.0)
 	)
@@ -232,7 +220,7 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	var fireball := CPUParticles3D.new()
 	fireball.emitting = false
 	fireball.one_shot = true
-	fireball.amount = 35
+	fireball.amount = 16
 	fireball.lifetime = 0.8
 	fireball.explosiveness = 0.95
 	fireball.direction = Vector3.ZERO
@@ -260,7 +248,7 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	var sparks := CPUParticles3D.new()
 	sparks.emitting = false
 	sparks.one_shot = true
-	sparks.amount = 40
+	sparks.amount = 20
 	sparks.lifetime = 0.7
 	sparks.explosiveness = 0.98
 	sparks.direction = Vector3.ZERO
@@ -285,8 +273,8 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	var smoke := CPUParticles3D.new()
 	smoke.emitting = false
 	smoke.one_shot = true
-	smoke.amount = 50
-	smoke.lifetime = 4.0
+	smoke.amount = 20
+	smoke.lifetime = 3.0
 	smoke.explosiveness = 0.5
 	smoke.randomness = 0.5
 	smoke.direction = Vector3(0, 1, 0)
@@ -329,13 +317,6 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 	ring.rotation.x = deg_to_rad(90.0)
 	root.add_child(ring)
 
-	# Light flash — brighter, larger
-	var light := OmniLight3D.new()
-	light.light_color = Color(1.0, 0.6, 0.2)
-	light.light_energy = 15.0
-	light.omni_range = 150.0 * s
-	root.add_child(light)
-
 	# Animate after added to scene tree
 	root.ready.connect(func():
 		var tween := root.create_tween()
@@ -343,7 +324,6 @@ static func enemy_death(pos: Vector3, color: Color, size: float = 14.0) -> Node3
 		tween.parallel().tween_property(flash_mat, "albedo_color:a", 0.0, 0.3)
 		tween.parallel().tween_property(ring, "scale", Vector3.ONE * 8.0, 0.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 		tween.parallel().tween_property(ring_mat, "albedo_color:a", 0.0, 0.5)
-		tween.parallel().tween_property(light, "light_energy", 0.0, 0.6)
 		tween.tween_callback(root.queue_free).set_delay(4.5)
 	)
 

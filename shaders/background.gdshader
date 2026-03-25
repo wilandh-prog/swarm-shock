@@ -92,9 +92,9 @@ float terrain_at(vec2 wp) {
 	float wy = fbm2(ws + vec2(100.0, 0.0));
 	vec2 warped = wp + vec2(wx, wy) * 800.0;
 
-	// Base terrain with warped coords
-	float h = fbm3(warped * 0.0004) * 0.6;
-	h += fbm3(warped * 0.0012 + vec2(50.0, 80.0)) * 0.25;
+	// Base terrain with warped coords (2 octaves for perf)
+	float h = fbm2(warped * 0.0004) * 0.6;
+	h += fbm2(warped * 0.0012 + vec2(50.0, 80.0)) * 0.25;
 
 	// Medium detail (unwarped for local variation)
 	h += fbm2(wp * 0.004 + vec2(120.0, 200.0)) * 0.08;
@@ -257,11 +257,15 @@ void fragment() {
 		               + cos((uv_wave.x + uv_wave.y) * 2.0 + t * 1.5) * 2.0 * 0.004 * 0.15
 		               + cos(uv_wave.x * 1.5 - uv_wave.y * 1.8 + t * 0.7) * (-1.8) * 0.004 * 0.1;
 
-		// Detail normal (analytical C2 noise derivatives)
-		float detail_fade = 1.0 - smoothstep(0.25, 0.6, dist_uv);
-		vec3 detail = detail_waves(world_uv, t);
-		float nx = -macro_dx * 3.0 - detail.y * detail_normal_strength * detail_fade;
-		float nz = -macro_dz * 3.0 - detail.z * detail_normal_strength * detail_fade;
+		// Detail normal (analytical C2 noise derivatives) — skip at distance
+		float detail_fade = 1.0 - smoothstep(0.15, 0.35, dist_uv);
+		float nx = -macro_dx * 3.0;
+		float nz = -macro_dz * 3.0;
+		if (detail_fade > 0.01) {
+			vec3 detail = detail_waves(world_uv, t);
+			nx -= detail.y * detail_normal_strength * detail_fade;
+			nz -= detail.z * detail_normal_strength * detail_fade;
+		}
 		vec3 normal_w = normalize(vec3(nx, 1.0, nz));
 
 		// Per-pixel wave value for color effects
@@ -288,15 +292,11 @@ void fragment() {
 		water_col = mix(water_col, shallow_color.rgb * 1.3, smoothstep(-0.2, 0.5, w_val) * 0.15);
 		water_col = mix(water_col, deep_color.rgb, smoothstep(0.1, -0.4, w_val) * 0.15);
 
-		// Caustics — only near camera (expensive 3x3 loops)
-		if (dist_uv < 0.35) {
+		// Caustics — only very near camera (expensive 3x3 loops), single layer only
+		if (dist_uv < 0.2) {
 			float c = caustic(world_uv * 0.012 + vec2(t * 0.3, t * 0.2), t);
 			float caust = smoothstep(0.15, 0.0, c) * 0.5 * beer;
 			water_col += vec3(0.15, 0.35, 0.45) * caust;
-
-			float c2 = caustic(world_uv * 0.005 + vec2(-t * 0.15, t * 0.1), t * 0.7);
-			float caust2 = smoothstep(0.2, 0.0, c2) * 0.25 * (0.3 + beer * 0.7);
-			water_col += vec3(0.1, 0.25, 0.35) * caust2;
 		}
 
 		// Whitecap foam

@@ -211,13 +211,7 @@ func _setup_visuals() -> void:
 	if f14_model:
 		_setup_wing_sweep(jet_instance)
 
-	# Glow light
-	_glow_light = OmniLight3D.new()
-	_glow_light.light_color = _body_color
-	_glow_light.light_energy = 1.5
-	_glow_light.omni_range = 80.0
-	_glow_light.position.y = 10.0
-	add_child(_glow_light)
+	# Glow handled by emission materials (no dynamic light for perf)
 
 	# Afterburner flames — one per engine (twin engines)
 	# F-14 model: 15x scale, rotated -90° on X. Nozzle exit at model Y≈-9.5 → Z≈142.
@@ -249,13 +243,6 @@ func _setup_visuals() -> void:
 		_plane_body.add_child(mesh_inst)
 		_afterburner_meshes.append(mesh_inst)
 
-		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.5, 0.1)
-		light.light_energy = 0.0
-		light.omni_range = 60.0
-		light.position = eng_pos
-		_plane_body.add_child(light)
-		_afterburner_lights.append(light)
 
 func _setup_audio() -> void:
 	# Jet engine — single player, OGG loops seamlessly
@@ -438,10 +425,8 @@ func _update_visuals(delta: float) -> void:
 		_plane_body.rotation.z = _bank_angle
 		_plane_body.rotation.x = _pitch_angle
 
-	# Pulse glow
+	# Pulse time (used for visual effects)
 	var pulse: float = (sin(_pulse_time * 3.0) + 1.0) * 0.5
-	if _glow_light:
-		_glow_light.light_energy = 1.0 + pulse * 1.0
 
 	# Afterburner — ramp up when boosting, fade when not
 	var boosting: bool = _current_speed > move_speed * 1.1
@@ -452,8 +437,6 @@ func _update_visuals(delta: float) -> void:
 		if mat:
 			mat.set_shader_parameter("intensity", _afterburner_intensity)
 		mesh_inst.visible = _afterburner_intensity > 0.02
-	for light in _afterburner_lights:
-		light.light_energy = _afterburner_intensity * 5.0
 
 	# Jet engine audio: pitch follows speed
 	if _jet_engine_player:
