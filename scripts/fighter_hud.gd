@@ -43,6 +43,8 @@ var landing_carrier: Node3D = null
 var landing_heading: float = 0.0
 var landing_deck_y: float = 70.0
 var _landing_debug_printed: bool = false
+var _hud_frame: int = 0
+var _cached_gun_target_dist: float = 1500.0
 
 func _process(delta: float) -> void:
 	if not player or not is_instance_valid(player):
@@ -71,7 +73,22 @@ func _process(delta: float) -> void:
 		_tutorial_alpha = move_toward(_tutorial_alpha, 1.0, 3.0 * delta)
 	else:
 		_tutorial_alpha = move_toward(_tutorial_alpha, 0.0, 2.0 * delta)
+
+	_hud_frame += 1
+	# Update gun aimpoint target distance every 4th frame
+	if _hud_frame % 4 == 0:
+		_cached_gun_target_dist = _find_nearest_enemy_dist()
 	queue_redraw()
+
+func _find_nearest_enemy_dist() -> float:
+	var best_dist: float = 1500.0
+	for enemy in GameManager.enemies_alive:
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = player.global_position.distance_to(enemy.global_position)
+		if d < best_dist:
+			best_dist = d
+	return best_dist
 
 func _draw() -> void:
 	if not player or not is_instance_valid(player):
@@ -329,21 +346,8 @@ func _draw_gun_aimpoint(ss: Vector2) -> void:
 	var fwd := Vector3(sin(player._heading), 0.0, -cos(player._heading))
 	var bullet_speed: float = player.weapon_manager.gun_speed
 
-	# Find nearest enemy to determine range for the pipper
-	var target_dist: float = 1500.0  # default range if no enemy
-	var best_enemy: Node3D = null
-	var best_dist: float = 2500.0
-
-	for enemy in GameManager.enemies_alive:
-		if not is_instance_valid(enemy):
-			continue
-		var d: float = player.global_position.distance_to(enemy.global_position)
-		if d < best_dist:
-			best_dist = d
-			best_enemy = enemy
-
-	if best_enemy:
-		target_dist = best_dist
+	# Use cached nearest enemy distance (updated every 4th frame)
+	var target_dist: float = _cached_gun_target_dist
 
 	# Bullet time of flight to that range
 	var tof: float = target_dist / bullet_speed
@@ -556,18 +560,21 @@ func _draw_radar(ss: Vector2) -> void:
 
 	# Enemy blips (rotated by heading so forward = up)
 	var enemies := GameManager.enemies_alive
+	var radar_range_sq: float = radar_range * radar_range
+	var radar_radius_sq: float = RADAR_RADIUS * RADAR_RADIUS
 	for enemy in enemies:
 		if not is_instance_valid(enemy):
 			continue
 		var rel: Vector3 = enemy.global_position - player.global_position
-		var dist: float = Vector2(rel.x, rel.z).length()
-		if dist > radar_range:
+		var dist_sq: float = rel.x * rel.x + rel.z * rel.z
+		if dist_sq > radar_range_sq:
 			continue
 		var blip := _radar_blip(rel, hdg, cx, cy)
-		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
+		var dx: float = blip.x - cx
+		var dy: float = blip.y - cy
+		if dx * dx + dy * dy > radar_radius_sq:
 			continue
-		# Ships get larger diamond blips
-		var is_ship: bool = enemy.has_method("get_contact_damage") and enemy.get_contact_damage() == 0.0
+		var is_ship: bool = enemy.is_in_group("ship")
 		if is_ship:
 			var s: float = 5.0
 			draw_line(Vector2(blip.x, blip.y - s), Vector2(blip.x + s, blip.y), WARN_RED, 2.0)
@@ -584,7 +591,9 @@ func _draw_radar(ss: Vector2) -> void:
 			continue
 		var rel: Vector3 = m.global_position - player.global_position
 		var blip := _radar_blip(rel, hdg, cx, cy)
-		if blip.distance_to(Vector2(cx, cy)) > RADAR_RADIUS:
+		var mdx: float = blip.x - cx
+		var mdy: float = blip.y - cy
+		if mdx * mdx + mdy * mdy > radar_radius_sq:
 			continue
 		# Flashing triangle for missiles
 		var flash: float = fmod(Time.get_ticks_msec() * 0.001, 0.3)

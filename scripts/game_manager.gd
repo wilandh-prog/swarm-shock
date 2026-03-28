@@ -45,17 +45,27 @@ var _radar_blip_sound: AudioStreamPlayer
 
 func register_enemy(e: Area3D) -> void:
 	enemies_alive.append(e)
-	e.tree_exiting.connect(func(): enemies_alive.erase(e))
+	e.tree_exiting.connect(func(): _swap_remove(enemies_alive, e))
 	if _radar_blip_sound:
 		_radar_blip_sound.play()
 
 func register_enemy_missile(m: Area3D) -> void:
 	enemy_missiles.append(m)
-	m.tree_exiting.connect(func(): enemy_missiles.erase(m))
+	m.tree_exiting.connect(func(): _swap_remove(enemy_missiles, m))
 
 func register_flare(f: Area3D) -> void:
 	flares_active.append(f)
-	f.tree_exiting.connect(func(): flares_active.erase(f))
+	f.tree_exiting.connect(func(): _swap_remove(flares_active, f))
+
+## O(1) removal: swap target with last element, then pop
+func _swap_remove(arr: Array[Area3D], item: Area3D) -> void:
+	var idx: int = arr.find(item)
+	if idx < 0:
+		return
+	var last: int = arr.size() - 1
+	if idx != last:
+		arr[idx] = arr[last]
+	arr.resize(last)
 
 # --- Game mode ---
 var game_mode: String = "mission"  # "wave" or "mission"

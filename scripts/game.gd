@@ -74,6 +74,9 @@ var _lightning_mat: StandardMaterial3D
 var _attract_timer: float = 0.0
 const ATTRACT_CHECK_INTERVAL: float = 0.15
 
+# Staggered spawn queue (1 enemy per frame to avoid spawn spikes)
+var _spawn_queue: Array[Dictionary] = []
+
 # Preloaded scenes
 var enemy_scene: PackedScene
 var xp_gem_scene: PackedScene
@@ -210,6 +213,10 @@ func _ready() -> void:
 	# Loading overlay — covers shader compilation stutter
 	_create_loading_overlay()
 
+	# Shader warmup: spawn all unique effect materials behind loading screen
+	# so WebGL compiles them before gameplay starts
+	_warmup_shaders()
+
 	# Start run
 	GameManager.start_run()
 
@@ -252,6 +259,90 @@ func _create_loading_overlay() -> void:
 	_loading_label.add_theme_font_size_override("font_size", 32)
 	_loading_label.add_theme_color_override("font_color", Color(0.3, 0.7, 1.0))
 	_loading_overlay.add_child(_loading_label)
+
+func _warmup_shaders() -> void:
+	# Render tiny instances of every unique material/shader used in effects
+	# so WebGL compiles them during loading screen, not during gameplay.
+	# Position near camera origin (0,0,0) so objects are IN the frustum.
+	# Loading overlay hides them from the player.
+	var warmup_root := Node3D.new()
+	warmup_root.position = Vector3(0, 0, -5)  # right in front of camera at origin
+	add_child(warmup_root)
+
+	# 1) Fireball shader sphere (used in explosion + enemy_death)
+	var fb := MeshInstance3D.new()
+	var fb_mesh := SphereMesh.new()
+	fb_mesh.radius = 0.01
+	fb_mesh.height = 0.02
+	var fb_mat := ShaderMaterial.new()
+	fb_mat.shader = Particles._get_fireball_shader()
+	fb_mat.set_shader_parameter("emission_strength", 1.0)
+	fb_mat.set_shader_parameter("dissolve", 0.0)
+	fb_mesh.material = fb_mat
+	fb.mesh = fb_mesh
+	warmup_root.add_child(fb)
+
+	# 2) Fire quad (soft additive billboard)
+	var fq := MeshInstance3D.new()
+	fq.mesh = Particles._get_fire_quad()
+	warmup_root.add_child(fq)
+
+	# 3) Smoke mesh (sphere with vertex color alpha)
+	var sm := MeshInstance3D.new()
+	sm.mesh = Particles._get_smoke_mesh()
+	warmup_root.add_child(sm)
+
+	# 4) Torus ring (shockwave — unshaded + transparency)
+	var ring := MeshInstance3D.new()
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.01
+	ring_mesh.outer_radius = 0.02
+	ring_mesh.rings = 4
+	ring_mesh.ring_segments = 4
+	var ring_mat := StandardMaterial3D.new()
+	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ring_mat.emission_enabled = true
+	ring_mesh.material = ring_mat
+	ring.mesh = ring_mesh
+	warmup_root.add_child(ring)
+
+	# 5) Unshaded billboard sphere (flash effect in enemy_death)
+	var fl := MeshInstance3D.new()
+	var fl_mesh := SphereMesh.new()
+	fl_mesh.radius = 0.01
+	fl_mesh.height = 0.02
+	var fl_mat := StandardMaterial3D.new()
+	fl_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fl_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fl_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	fl_mat.emission_enabled = true
+	fl_mesh.material = fl_mat
+	fl.mesh = fl_mesh
+	warmup_root.add_child(fl)
+
+	# 6) Label3D shader (damage numbers — first use triggers shader compile)
+	var lbl := Label3D.new()
+	lbl.text = "0"
+	lbl.font_size = 18
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.no_depth_test = true
+	lbl.pixel_size = 0.5
+	lbl.outline_size = 4
+	lbl.modulate = Color(1, 1, 1, 0.01)  # near-invisible
+	warmup_root.add_child(lbl)
+
+	# 7) Trigger all static caches in Particles (lazy-loaded resources)
+	Particles._get_fireball_shader()
+	Particles._get_soft_circle()
+	Particles._get_smoke_mesh()
+	Particles._get_fire_quad()
+
+	# 8) Pre-cache damage number script
+	load("res://scripts/damage_number.gd")
+
+	# Remove after warmup frames render
+	get_tree().create_timer(0.5).timeout.connect(warmup_root.queue_free)
 
 func _dismiss_loading_overlay() -> void:
 	if _loading_overlay:
@@ -359,7 +450,7 @@ func _process(delta: float) -> void:
 					_wave_spawned = false
 					if GameManager.game_mode == "wave" and hud.fighter_hud:
 						hud.fighter_hud.show_wave_announcement("WAVE %d" % (_current_wave + 1))
-			elif enemy_container.get_child_count() == 0:
+			elif enemy_container.get_child_count() == 0 and _spawn_queue.is_empty():
 				_waiting_for_next_wave = true
 				_wave_delay_timer = 0.0
 				hud.set_tutorial_text(PackedStringArray())
@@ -369,7 +460,7 @@ func _process(delta: float) -> void:
 					_on_player_leveled_up(_current_wave / 2 + 2)
 
 		# Landing trigger: mission mode only, all waves done and all enemies dead
-		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0:
+		if GameManager.game_mode == "mission" and _current_wave >= wc.size() and enemy_container.get_child_count() == 0 and _spawn_queue.is_empty():
 			awacs_message("ALL TARGETS SPLASHED. RTB -- MARSHAL CARRIER BRC 270.", 4.0)
 			_begin_landing_sequence()
 
@@ -404,6 +495,19 @@ func _process(delta: float) -> void:
 		hud.set_wave_info(maxi(destroyed, 0), _ships_total)
 
 
+	# Drain spawn queue: one enemy per frame to avoid spawn spikes
+	if _spawn_queue.size() > 0:
+		var entry: Dictionary = _spawn_queue.pop_front()
+		var enemy: Area3D = enemy_scene.instantiate()
+		enemy.target = player
+		enemy.configure(entry["type"], entry["diff"])
+		var to_player: Vector3 = player.global_position - Vector3(entry["pos"])
+		to_player.y = 0.0
+		enemy._heading = atan2(to_player.x, -to_player.z)
+		enemy.enemy_died.connect(_on_enemy_died)
+		enemy_container.add_child(enemy)
+		enemy.global_position = entry["pos"]
+
 	# Pickup attraction
 	if _attract_timer >= ATTRACT_CHECK_INTERVAL:
 		_attract_timer = 0.0
@@ -435,6 +539,7 @@ func _update_awacs(delta: float) -> void:
 
 var _tts_voice_id: String = ""
 var _tts_initialized: bool = false
+var _tts_regex: RegEx
 
 func _init_tts() -> void:
 	_tts_initialized = true
@@ -456,9 +561,10 @@ func _speak_awacs(text: String) -> void:
 
 	var clean := text
 	# Strip key hints like [F], [G], [SPACE]
-	var regex := RegEx.new()
-	regex.compile("\\[\\w+\\]")
-	clean = regex.sub(clean, "", true)
+	if not _tts_regex:
+		_tts_regex = RegEx.new()
+		_tts_regex.compile("\\[\\w+\\]")
+	clean = _tts_regex.sub(clean, "", true)
 	# Expand military abbreviations for natural TTS speech
 	clean = clean.replace("RTB", "R T B")
 	clean = clean.replace("BRAA", "brah")
@@ -662,18 +768,7 @@ func _spawn_wave_from_config(wave_index: int) -> void:
 			var angle := randf() * TAU
 			var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
 			var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
-
-			var enemy: Area3D = enemy_scene.instantiate()
-			enemy.target = player
-			enemy.configure(enemy_type_val, difficulty_mult)
-
-			var to_player := player.global_position - spawn_pos
-			to_player.y = 0.0
-			enemy._heading = atan2(to_player.x, -to_player.z)
-
-			enemy.enemy_died.connect(_on_enemy_died)
-			enemy_container.add_child(enemy)
-			enemy.global_position = spawn_pos
+			_spawn_queue.append({"pos": spawn_pos, "type": enemy_type_val, "diff": difficulty_mult})
 
 func _spawn_wave_generated(wave_index: int) -> void:
 	if not enemy_scene or not is_instance_valid(player):
@@ -704,18 +799,7 @@ func _spawn_wave_generated(wave_index: int) -> void:
 		var angle := randf() * TAU
 		var dist := randf_range(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
 		var spawn_pos := player.global_position + Vector3(cos(angle) * dist, randf_range(-50, 50), sin(angle) * dist)
-
-		var enemy: Area3D = enemy_scene.instantiate()
-		enemy.target = player
-		enemy.configure(enemy_type_val, difficulty_mult)
-
-		var to_player := player.global_position - spawn_pos
-		to_player.y = 0.0
-		enemy._heading = atan2(to_player.x, -to_player.z)
-
-		enemy.enemy_died.connect(_on_enemy_died)
-		enemy_container.add_child(enemy)
-		enemy.global_position = spawn_pos
+		_spawn_queue.append({"pos": spawn_pos, "type": enemy_type_val, "diff": difficulty_mult})
 
 # --- Enemy death ---
 
@@ -757,44 +841,48 @@ func _try_chain_lightning(origin_pos: Vector3) -> void:
 	_chain_active = true
 
 	var chain_range: float = player.chain_range
+	var chain_range_sq: float = chain_range * chain_range
 	var chain_damage: float = player.damage_mult * 8.0 * player.chain_damage_mult
-	var hit_positions: Array[Vector3] = [origin_pos]
+	var hit_set: Dictionary = {}  # enemy instance id -> true
 	var sources: Array[Vector3] = [origin_pos]
 	var max_chains: int = 5
 	var chains_done: int = 0
 
+	# Cache valid enemies once instead of calling get_children() per source
+	var enemies: Array[Node] = enemy_container.get_children()
+
 	while sources.size() > 0 and chains_done < max_chains:
 		var check_pos: Vector3 = sources.pop_front()
+		var best_enemy: Node = null
+		var best_dist_sq: float = chain_range_sq
 
-		for enemy in enemy_container.get_children():
-			if chains_done >= max_chains:
-				break
+		for enemy in enemies:
 			if not is_instance_valid(enemy) or not enemy.has_method("take_damage"):
 				continue
-			var dist: float = check_pos.distance_to(enemy.global_position)
-			if dist > 0.1 and dist <= chain_range:
-				var already_hit: bool = false
-				for hp in hit_positions:
-					if hp.distance_to(enemy.global_position) < 5.0:
-						already_hit = true
-						break
-				if already_hit:
-					continue
+			if hit_set.has(enemy.get_instance_id()):
+				continue
+			var diff: Vector3 = enemy.global_position - check_pos
+			var dist_sq: float = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z
+			if dist_sq > 1.0 and dist_sq < best_dist_sq:
+				best_dist_sq = dist_sq
+				best_enemy = enemy
 
-				_chain_arcs.append({
-					"from": check_pos,
-					"to": enemy.global_position,
-					"timer": CHAIN_ARC_DURATION,
-				})
+		if best_enemy == null:
+			break
 
-				var spark := Particles.chain_spark(enemy.global_position)
-				add_child(spark)
+		_chain_arcs.append({
+			"from": check_pos,
+			"to": best_enemy.global_position,
+			"timer": CHAIN_ARC_DURATION,
+		})
 
-				hit_positions.append(enemy.global_position)
-				sources.append(enemy.global_position)
-				chains_done += 1
-				enemy.take_damage(chain_damage)
-				break
+		var spark := Particles.chain_spark(best_enemy.global_position)
+		add_child(spark)
+
+		hit_set[best_enemy.get_instance_id()] = true
+		sources.append(best_enemy.global_position)
+		chains_done += 1
+		best_enemy.take_damage(chain_damage)
 
 	if chains_done >= 3:
 		EffectsManager.big_impact()
@@ -813,18 +901,22 @@ func _update_chain_arcs(delta: float) -> void:
 
 func _update_lightning_mesh() -> void:
 	if _chain_arcs.is_empty():
-		_lightning_mesh.mesh = null
+		if _lightning_mesh.mesh != null:
+			_lightning_mesh.mesh = null
 		return
 
-	var im := ImmediateMesh.new()
+	# Reuse a single ImmediateMesh — clear and redraw instead of allocating new
+	var im: ImmediateMesh
+	if _lightning_mesh.mesh is ImmediateMesh:
+		im = _lightning_mesh.mesh as ImmediateMesh
+		im.clear_surfaces()
+	else:
+		im = ImmediateMesh.new()
+		_lightning_mesh.mesh = im
 
 	for arc in _chain_arcs:
 		var alpha: float = arc["timer"] / CHAIN_ARC_DURATION
-		var from_pos: Vector3 = arc["from"]
-		var to_pos: Vector3 = arc["to"]
-		_draw_lightning_3d(im, from_pos, to_pos, alpha, 4)
-
-	_lightning_mesh.mesh = im
+		_draw_lightning_3d(im, arc["from"], arc["to"], alpha, 4)
 
 func _draw_lightning_3d(im: ImmediateMesh, from: Vector3, to: Vector3, alpha: float, segments: int) -> void:
 	var dir: Vector3 = to - from
@@ -859,12 +951,14 @@ func _draw_lightning_3d(im: ImmediateMesh, from: Vector3, to: Vector3, alpha: fl
 func _attract_nearby_pickups() -> void:
 	if not is_instance_valid(player):
 		return
+	var range_sq: float = player.pickup_range * player.pickup_range
+	var player_pos: Vector3 = player.global_position
 	for pickup in pickup_container.get_children():
 		if not is_instance_valid(pickup):
 			continue
 		if pickup.has_method("attract_to"):
-			var dist: float = player.global_position.distance_to(pickup.global_position)
-			if dist <= player.pickup_range:
+			var diff: Vector3 = pickup.global_position - player_pos
+			if diff.x * diff.x + diff.y * diff.y + diff.z * diff.z <= range_sq:
 				pickup.attract_to(player)
 
 # --- Landing sequence ---
@@ -1139,7 +1233,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Debug: L key skips to landing sequence in mission mode
 	if event is InputEventKey and event.pressed and event.keycode == KEY_L:
 		if GameManager.game_mode == "mission" and _phase in [GamePhase.TUTORIAL, GamePhase.COMBAT]:
-			# Clear enemies so landing triggers cleanly
+			# Clear enemies and spawn queue so landing triggers cleanly
+			_spawn_queue.clear()
 			for enemy in enemy_container.get_children():
 				enemy.queue_free()
 			_phase = GamePhase.COMBAT

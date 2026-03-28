@@ -30,6 +30,7 @@ const LOCK_RANGE: float = 3000.0
 var lock_cone: float = 0.6  # dot product threshold (~53 degrees), upgradeable
 var lock_speed: float = 0.6  # ~1.7s at perfect centering, upgradeable
 const LOCK_DECAY: float = 1.0  # lose tracking in ~1s
+var _lock_scan_frame: int = 0  # rate-limit candidate search
 
 # AGM (Anti-Ground Missile) for ships
 var agm_damage: float = 80.0
@@ -75,6 +76,7 @@ func _process(delta: float) -> void:
 	if not player:
 		return
 
+	_lock_scan_frame += 1
 	_update_lock_on(delta)
 	_update_ship_lock_on(delta)
 
@@ -134,7 +136,9 @@ func _update_lock_on(delta: float) -> void:
 			tracking_target = null
 		return
 
-	# No current tracking target — find best candidate in cone
+	# No current tracking target — find best candidate in cone (every 3rd frame)
+	if _lock_scan_frame % 3 != 0:
+		return
 	var best_target: Node3D = null
 	var best_dot: float = lock_cone
 
@@ -184,7 +188,9 @@ func _update_ship_lock_on(delta: float) -> void:
 			ship_tracking_target = null
 		return
 
-	# Find best ship in cone
+	# Find best ship in cone (every 3rd frame)
+	if _lock_scan_frame % 3 != 0:
+		return
 	var best_target: Node3D = null
 	var best_dot: float = AGM_LOCK_CONE
 	for enemy in GameManager.enemies_alive:
@@ -268,7 +274,7 @@ func _fire_gun() -> void:
 	var heading: float = player._heading
 	var aim_dir := Vector3(sin(heading), 0.0, -cos(heading))
 
-	# Auto-aim: find closest enemy in a wide cone and lead-target it
+	# Auto-aim: find closest enemy in a wide cone and lead-target it (every 3rd frame cache)
 	var best_enemy: Node3D = null
 	var best_dot: float = 0.3  # ~72° cone
 	for enemy in GameManager.enemies_alive:

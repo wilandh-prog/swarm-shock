@@ -8,6 +8,27 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if OS.has_feature("web"):
 		_init_sdk()
+		_setup_fullscreen_focus()
+
+func _setup_fullscreen_focus() -> void:
+	# CrazyGames fullscreen resizes the iframe rather than using the native
+	# Fullscreen API, so 'fullscreenchange' never fires inside the game.
+	# Instead, listen for resize + any pointer interaction to re-focus the canvas.
+	JavaScriptBridge.eval("""
+		(function() {
+			var c = document.getElementById('canvas');
+			if (!c) return;
+			window.addEventListener('resize', function() {
+				setTimeout(function() { c.focus(); }, 100);
+			});
+			document.addEventListener('pointerdown', function() {
+				c.focus();
+			});
+			window.addEventListener('focus', function() {
+				setTimeout(function() { c.focus(); }, 50);
+			});
+		})();
+	""")
 
 func _init_sdk() -> void:
 	var js_check = JavaScriptBridge.eval("""

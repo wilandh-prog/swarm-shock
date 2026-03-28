@@ -288,13 +288,15 @@ func _process(delta: float) -> void:
 
 func _check_flare_attract() -> void:
 	var flares := GameManager.flares_active
+	var pos: Vector3 = global_position
 	for flare in flares:
 		if not is_instance_valid(flare):
 			continue
-		var dist: float = global_position.distance_to(flare.global_position)
-		if dist > 800.0:
+		var diff: Vector3 = flare.global_position - pos
+		var dist_sq: float = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z
+		if dist_sq > 640000.0:  # 800^2
 			continue
-		# Closer flare = higher chance per frame
+		var dist: float = sqrt(dist_sq)
 		var chance: float = 0.04 * (1.0 - dist / 800.0)
 		if randf() < chance:
 			homing_target = flare
@@ -317,12 +319,15 @@ func _explode() -> void:
 	# AOE damage (player missiles only)
 	if not is_enemy_missile:
 		var enemies := GameManager.enemies_alive
+		var radius_sq: float = explosion_radius * explosion_radius
+		var pos: Vector3 = global_position
 		for enemy in enemies:
 			if not is_instance_valid(enemy):
 				continue
-			var dist: float = global_position.distance_to(enemy.global_position)
-			if dist <= explosion_radius:
-				var falloff: float = 1.0 - (dist / explosion_radius) * 0.5
+			var diff: Vector3 = enemy.global_position - pos
+			var dist_sq: float = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z
+			if dist_sq <= radius_sq:
+				var falloff: float = 1.0 - (sqrt(dist_sq) / explosion_radius) * 0.5
 				if enemy.has_method("take_damage"):
 					enemy.take_damage(damage * falloff)
 

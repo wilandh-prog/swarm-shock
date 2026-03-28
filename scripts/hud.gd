@@ -19,6 +19,7 @@ var _upgrade_pool: Array[Dictionary] = []
 var _display_xp: float = 0.0
 var _display_health: float = 100.0
 var _prev_kills: int = 0
+var _hud_text_frame: int = 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -111,36 +112,39 @@ func update_display() -> void:
 	if not GameManager.run_active:
 		return
 
-	var minutes := int(GameManager.run_time) / 60
-	var seconds := int(GameManager.run_time) % 60
-	time_label.text = "%02d:%02d" % [minutes, seconds]
-	xp_label.text = "XP: %d" % GameManager.run_xp_earned
+	_hud_text_frame += 1
 
-	# Animated kill counter
-	if GameManager.run_kills != _prev_kills:
-		_prev_kills = GameManager.run_kills
-		kills_label.text = "Kills: %d" % GameManager.run_kills
-		# Pulse animation
-		var tween := create_tween()
-		tween.tween_property(kills_label, "scale", Vector2(1.15, 1.15), 0.05)
-		tween.tween_property(kills_label, "scale", Vector2.ONE, 0.1)
-
-	level_label.text = "Lv.%d" % GameManager.run_level
-
-	# Smooth XP bar
+	# Smooth bars every frame (cheap)
 	var target_xp: float = 0.0
 	if GameManager.run_xp_to_next > 0:
 		target_xp = float(GameManager.run_xp) / float(GameManager.run_xp_to_next) * 100.0
 	_display_xp = lerpf(_display_xp, target_xp, 0.15)
 	xp_bar.value = _display_xp
 
-	# Smooth health display
 	if _player and is_instance_valid(_player):
 		_display_health = lerpf(_display_health, _player.health, 0.15)
 		health_bar.max_value = _player.max_health
 		health_bar.value = _display_health
 
-		# Health label in top bar with color
+	# Kill counter — only on change (triggers tween)
+	if GameManager.run_kills != _prev_kills:
+		_prev_kills = GameManager.run_kills
+		kills_label.text = "Kills: %d" % GameManager.run_kills
+		var tween := create_tween()
+		tween.tween_property(kills_label, "scale", Vector2(1.15, 1.15), 0.05)
+		tween.tween_property(kills_label, "scale", Vector2.ONE, 0.1)
+
+	# Text labels + colors: update every 6th frame (~10fps at 60fps)
+	if _hud_text_frame % 6 != 0:
+		return
+
+	var minutes := int(GameManager.run_time) / 60
+	var seconds := int(GameManager.run_time) % 60
+	time_label.text = "%02d:%02d" % [minutes, seconds]
+	xp_label.text = "XP: %d" % GameManager.run_xp_earned
+	level_label.text = "Lv.%d" % GameManager.run_level
+
+	if _player and is_instance_valid(_player):
 		health_label.text = "HP: %d" % int(_display_health)
 		var hp_frac: float = _display_health / _player.max_health
 		if hp_frac > 0.6:
@@ -150,7 +154,6 @@ func update_display() -> void:
 		else:
 			health_label.add_theme_color_override("font_color", Color(0.9, 0.2, 0.2))
 
-		# Health bar color matches
 		var hp_fill: StyleBoxFlat = health_bar.get_theme_stylebox("fill") as StyleBoxFlat
 		if hp_fill:
 			hp_fill.bg_color = health_label.get_theme_color("font_color")
