@@ -584,26 +584,7 @@ func _init_tts() -> void:
 	_tts_voice_id = ""
 
 func _speak_awacs(_text: String) -> void:
-	return  # TTS disabled
-
-	var clean := text
-	# Strip key hints like [F], [G], [SPACE]
-	if not _tts_regex:
-		_tts_regex = RegEx.new()
-		_tts_regex.compile("\\[\\w+\\]")
-	clean = _tts_regex.sub(clean, "", true)
-	# Expand military abbreviations for natural TTS speech
-	clean = clean.replace("RTB", "R T B")
-	clean = clean.replace("BRAA", "brah")
-	clean = clean.replace("BRC", "B R C")
-	clean = clean.replace("CAT 1", "cat one")
-	clean = clean.replace("--", ",")
-	clean = clean.replace("  ", " ")
-	clean = clean.strip_edges()
-	if clean.is_empty():
-		return
-	var rate := 1.3 + clampf(float(clean.split(" ", false).size() - 3) * 0.1, 0.0, 0.7)
-	DisplayServer.tts_speak(clean, _tts_voice_id, 100, 1.5, rate)
+	pass  # TTS disabled
 
 # --- Tutorial ---
 
