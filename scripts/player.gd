@@ -492,8 +492,9 @@ func _update_visuals(delta: float) -> void:
 
 func take_damage(amount: float) -> void:
 	# Always show feedback so player knows they're being hit
-	EffectsManager.screen_shake(6.0, 0.15)
-	EffectsManager.chromatic_pulse(0.005)
+	EffectsManager.screen_shake(10.0, 0.2)
+	EffectsManager.chromatic_pulse(0.01)
+	EffectsManager.screen_flash(Color(1.0, 0.15, 0.1), 0.25)
 	var hit_particles := Particles.player_hit(global_position)
 	get_tree().current_scene.add_child(hit_particles)
 
