@@ -491,6 +491,12 @@ func _update_visuals(delta: float) -> void:
 		_wing_pivot_left.rotation.z = _wing_sweep_angle
 
 func take_damage(amount: float) -> void:
+	# Always show feedback so player knows they're being hit
+	EffectsManager.screen_shake(6.0, 0.15)
+	EffectsManager.chromatic_pulse(0.005)
+	var hit_particles := Particles.player_hit(global_position)
+	get_tree().current_scene.add_child(hit_particles)
+
 	if _invincible:
 		return
 	health -= amount
@@ -498,13 +504,6 @@ func take_damage(amount: float) -> void:
 
 	_invincible = true
 	_invincible_timer = INVINCIBLE_DURATION
-	_flash_hit()
-
-	# Effects
-	EffectsManager.screen_shake(6.0, 0.15)
-	EffectsManager.chromatic_pulse(0.005)
-	var hit_particles := Particles.player_hit(global_position)
-	get_tree().current_scene.add_child(hit_particles)
 
 	if health <= 0.0:
 		health = 0.0
