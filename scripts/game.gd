@@ -29,7 +29,7 @@ var _waiting_for_next_wave: bool = false
 const MISSION_WAVE_CONFIG: Array[Dictionary] = [
 	{"BASIC": 1},
 	{"BASIC": 2},
-	{"BASIC": 2, "FAST": 1},
+	{"BASIC": 1, "FAST": 1},
 	{"BASIC": 1, "FAST": 2, "SWARM": 1},
 	{"BASIC": 1, "FAST": 2, "SWARM": 3},
 ]
@@ -37,7 +37,7 @@ const MISSION_WAVE_CONFIG: Array[Dictionary] = [
 const WAVE_WAVE_CONFIG: Array[Dictionary] = [
 	{"BASIC": 1},
 	{"BASIC": 1},
-	{"BASIC": 2},
+	{"BASIC": 1, "FAST": 1},
 	{"BASIC": 2},
 	{"BASIC": 2, "FAST": 1},
 	{"BASIC": 2, "FAST": 1},
@@ -338,8 +338,38 @@ func _warmup_shaders() -> void:
 	Particles._get_smoke_mesh()
 	Particles._get_fire_quad()
 
-	# 8) Pre-cache damage number script
+	# 8) Pre-cache all scripts and scenes that lazy-load during gameplay
 	load("res://scripts/damage_number.gd")
+	load("res://scripts/flare.gd")
+	load("res://scripts/weapon_manager.gd")
+	load("res://scenes/entities/projectile.tscn")
+	load("res://shaders/vignette.gdshader")
+
+	# 9) Pre-cache enemy GLB models (first load of each type causes stall)
+	for path in ["res://assets/mig-e8/mig-e8.glb", "res://assets/sukhoi/sukhoi.glb",
+			"res://assets/tornado/tornado.glb"]:
+		var res = load(path)
+		if res:
+			# Instantiate and add briefly to trigger GPU upload of mesh/material
+			var inst: Node3D = res.instantiate()
+			inst.scale = Vector3(0.001, 0.001, 0.001)
+			warmup_root.add_child(inst)
+
+	# 10) Pre-cache projectile mesh+material (bullet + missile visual)
+	var proj_scene: PackedScene = load("res://scenes/entities/projectile.tscn")
+	if proj_scene:
+		var p := proj_scene.instantiate()
+		p.setup(Vector3.FORWARD, 0.0, 1.0)
+		p.scale = Vector3(0.001, 0.001, 0.001)
+		warmup_root.add_child(p)
+
+	# 11) Pre-cache flare visuals (triggers static material cache)
+	var flare_script: GDScript = load("res://scripts/flare.gd")
+	if flare_script:
+		var dummy_flare := Area3D.new()
+		dummy_flare.set_script(flare_script)
+		dummy_flare.scale = Vector3(0.001, 0.001, 0.001)
+		warmup_root.add_child(dummy_flare)
 
 	# Remove after warmup frames render
 	get_tree().create_timer(0.5).timeout.connect(warmup_root.queue_free)

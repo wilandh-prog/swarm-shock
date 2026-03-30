@@ -50,10 +50,10 @@ const MAX_PITCH_ANGLE: float = 0.4 # radians (~23 degrees)
 const BANK_LERP_SPEED: float = 6.0
 
 # Missile ammo
-var missile_ammo: int = 4
-var missile_ammo_max: int = 4
+var missile_ammo: int = 6
+var missile_ammo_max: int = 6
 var _missile_regen_timer: float = 0.0
-const MISSILE_REGEN_INTERVAL: float = 10.0
+const MISSILE_REGEN_INTERVAL: float = 7.0
 
 # Flares
 var flare_count: int = 30
@@ -121,7 +121,7 @@ func _apply_base_stats() -> void:
 	pickup_range = GameManager.get_stat("pickup_range")
 	damage_mult = GameManager.get_stat("damage_mult")
 	chain_range = GameManager.get_stat("chain_range")
-	missile_ammo_max = 4 + GameManager.upgrade_levels.get("missile_ammo", 0) * 2
+	missile_ammo_max = 6 + GameManager.upgrade_levels.get("missile_ammo", 0) * 2
 	missile_ammo = missile_ammo_max
 	flare_count_max = 30 + GameManager.upgrade_levels.get("flare_count", 0) * 10
 	flare_count = flare_count_max
