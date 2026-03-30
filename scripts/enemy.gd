@@ -45,9 +45,9 @@ const LOCK_TIME: float = 0.5
 const BREAK_DURATION: float = 2.5
 const FIRE_RATE: float = 3.0
 const ENEMY_MISSILE_SPEED: float = 1000.0
-const ENEMY_MISSILE_DAMAGE: float = 8.0
+const ENEMY_MISSILE_DAMAGE: float = 5.0
 const ENEMY_GUN_SPEED: float = 3000.0
-const ENEMY_GUN_DAMAGE: float = 4.0
+const ENEMY_GUN_DAMAGE: float = 2.5
 const GUN_FIRE_RATE: float = 0.12
 const GUN_BURST_COUNT: int = 6
 const GUN_RANGE: float = 600.0
@@ -80,7 +80,7 @@ static var _hp_fill_mat_cached: StandardMaterial3D
 # Type configs
 const TYPE_CONFIG := {
 	EnemyType.BASIC: {
-		"hp": 30.0, "speed": 1500.0, "damage": 10.0,
+		"hp": 30.0, "speed": 1500.0, "damage": 6.0,
 		"xp": 1, "volt_chance": 0.1, "radius": 14.0,
 		"color": Color(0.22, 0.24, 0.26),
 		"model": "res://assets/mig-e8/mig-e8.glb",
@@ -88,7 +88,7 @@ const TYPE_CONFIG := {
 		"model_rot_y": 180.0, "unshaded": false,
 	},
 	EnemyType.FAST: {
-		"hp": 15.0, "speed": 2000.0, "damage": 8.0,
+		"hp": 15.0, "speed": 2000.0, "damage": 5.0,
 		"xp": 1, "volt_chance": 0.08, "radius": 10.0,
 		"color": Color(0.28, 0.30, 0.32),
 		"model": "res://assets/sukhoi/sukhoi.glb",
@@ -96,7 +96,7 @@ const TYPE_CONFIG := {
 		"model_rot_y": 180.0, "unshaded": true,
 	},
 	EnemyType.TANK: {
-		"hp": 100.0, "speed": 1000.0, "damage": 20.0,
+		"hp": 100.0, "speed": 1000.0, "damage": 12.0,
 		"xp": 3, "volt_chance": 0.25, "radius": 22.0,
 		"color": Color(0.18, 0.20, 0.22),
 		"model": "res://assets/mig-e8/mig-e8.glb",
@@ -104,7 +104,7 @@ const TYPE_CONFIG := {
 		"model_rot_y": 180.0, "unshaded": false,
 	},
 	EnemyType.SWARM: {
-		"hp": 10.0, "speed": 1800.0, "damage": 5.0,
+		"hp": 10.0, "speed": 1800.0, "damage": 3.0,
 		"xp": 1, "volt_chance": 0.05, "radius": 8.0,
 		"color": Color(0.25, 0.27, 0.28),
 		"model": "res://assets/tornado/tornado.glb",

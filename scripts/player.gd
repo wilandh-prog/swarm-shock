@@ -515,12 +515,7 @@ func heal(amount: float) -> void:
 	health_changed.emit(health, max_health)
 
 func _flash_hit() -> void:
-	# Blink visibility for invincibility
-	var tween := create_tween()
-	for i in 5:
-		tween.tween_callback(func(): visible = false).set_delay(0.04)
-		tween.tween_callback(func(): visible = true).set_delay(0.04)
-	tween.tween_callback(func(): visible = true)
+	pass
 
 func _on_pickup_entered(area: Area3D) -> void:
 	if area.has_method("collect"):
