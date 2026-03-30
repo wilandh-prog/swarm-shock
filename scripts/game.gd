@@ -583,11 +583,8 @@ func _init_tts() -> void:
 	# No English voice found — disable TTS
 	_tts_voice_id = ""
 
-func _speak_awacs(text: String) -> void:
-	if not _tts_initialized:
-		_init_tts()
-	if _tts_voice_id.is_empty():
-		return  # no English voice available
+func _speak_awacs(_text: String) -> void:
+	return  # TTS disabled
 
 	var clean := text
 	# Strip key hints like [F], [G], [SPACE]
